@@ -42,11 +42,11 @@ The description of r_2 is "[Hospital part 0]".
 
 The r_1 is mapped west of r_2.
 The r_5 is mapped south of r_2.
-Understand "Central Square" as r_4.
-The internal name of r_4 is "Central Square".
-The printed name of r_4 is "-= Central Square =-".
-The Central Square part 0 is some text that varies. The Central Square part 0 is "The heart of the village, with an ancient well in the center.".
-The description of r_4 is "[Central Square part 0]".
+Understand "scullery" as r_4.
+The internal name of r_4 is "scullery".
+The printed name of r_4 is "-= Scullery =-".
+The scullery part 0 is some text that varies. The scullery part 0 is "A peaceful park with a mysterious well in the center.".
+The description of r_4 is "[scullery part 0]".
 
 The r_3 is mapped west of r_4.
 The r_7 is mapped south of r_4.
@@ -61,11 +61,11 @@ The description of r_3 is "[School part 0]".
 The r_6 is mapped south of r_3.
 The r_0 is mapped north of r_3.
 The r_4 is mapped east of r_3.
-Understand "shower" as r_5.
-The internal name of r_5 is "shower".
-The printed name of r_5 is "-= Shower =-".
-The shower part 0 is some text that varies. The shower part 0 is "Responsible for maintaining village security.".
-The description of r_5 is "[shower part 0]".
+Understand "Sheriff's Office" as r_5.
+The internal name of r_5 is "Sheriff's Office".
+The printed name of r_5 is "-= Sheriff'S Office =-".
+The Sheriff's Office part 0 is some text that varies. The Sheriff's Office part 0 is "Responsible for maintaining village security.".
+The description of r_5 is "[Sheriff's Office part 0]".
 
 The r_4 is mapped west of r_5.
 The r_8 is mapped south of r_5.
@@ -96,27 +96,49 @@ The description of r_8 is "[Forest part 0]".
 The r_7 is mapped west of r_8.
 The r_5 is mapped north of r_8.
 
+The c_0 and the c_1 and the c_2 are containers.
+The c_0 and the c_1 and the c_2 are privately-named.
+The k_1 and the k_0 are keys.
+The k_1 and the k_0 are privately-named.
+The o_0 are object-likes.
+The o_0 are privately-named.
 The r_1 and the r_0 and the r_2 and the r_4 and the r_3 and the r_5 and the r_7 and the r_6 and the r_8 are rooms.
 The r_1 and the r_0 and the r_2 and the r_4 and the r_3 and the r_5 and the r_7 and the r_6 and the r_8 are privately-named.
 
+The description of c_0 is "A stern-looking law enforcement officer".
+The printed name of c_0 is "Sheriff".
+Understand "Sheriff" as c_0.
+The c_0 is in r_5.
+The c_0 is open.
+The description of c_1 is "A well in the center of the village".
+The printed name of c_1 is "Well".
+Understand "Well" as c_1.
+The c_1 is in r_4.
+The c_1 is locked.
+The description of c_2 is "A vendor selling goods".
+The printed name of c_2 is "Vendor".
+Understand "Vendor" as c_2.
+The c_2 is in r_0.
+The c_2 is locked.
+The description of k_1 is "a bag of money".
+The printed name of k_1 is "money".
+Understand "money" as k_1.
+The k_1 is in r_6.
+The matching key of the c_2 is the k_1.
+The description of k_0 is "a rope".
+The printed name of k_0 is "rope".
+Understand "rope" as k_0.
+The k_0 is in the c_2.
+The matching key of the c_1 is the k_0.
+The description of o_0 is "a sharp knife, with blood on it".
+The printed name of o_0 is "knife".
+Understand "knife" as o_0.
+The o_0 is in the c_1.
 
 
 The player is in r_6.
 
-The quest0 completed is a truth state that varies.
-The quest0 completed is usually false.
-
-Test quest0_0 with "go north"
-
-Every turn:
-	if quest0 completed is true:
-		do nothing;
-	else if The r_3 is mapped north of r_6 and The player is in r_3:
-		increase the score by 1; [Quest completed]
-		if 1 is 1 [always true]:
-			Now the quest0 completed is true;
-
-Use scoring. The maximum score is 1.
+Use scoring. The maximum score is 0.
 This is the simpler notify score changes rule:
 	If the score is not the last notified score:
 		let V be the score - the last notified score;
@@ -129,7 +151,7 @@ This is the simpler notify score changes rule:
 		else:
 			say "points.";
 		Now the last notified score is the score;
-	if quest0 completed is true:
+	if 1 is 0 [always false]:
 		end the story finally; [Win]
 
 The simpler notify score changes rule substitutes for the notify score changes rule.
@@ -294,9 +316,8 @@ The last property-aggregation rule (this is the print aggregated properties rule
 		rule succeeds;
 	rule fails;
 
-The objective part 0 is some text that varies. The objective part 0 is "Who's got a virtual machine and is about to play through an exciting round of TextWorld? You do! Your task for today is to move north.".
 
-An objective is some text that varies. The objective is "[objective part 0]".
+An objective is some text that varies. The objective is "".
 Printing the objective is an action applying to nothing.
 Carry out printing the objective:
 	say "[objective]".

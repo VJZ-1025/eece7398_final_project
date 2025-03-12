@@ -22,8 +22,8 @@ def generate_village_map(output_file="./village_game.z8"):
 
     # Middle row (Row2)
     r21 = gm.new_room(name="School", desc="Where children receive their education.")
-    r22 = gm.new_room(name="Central Square", desc="The heart of the village, with an ancient well in the center.")
-    r23 = gm.new_room(name="Police Station", desc="Responsible for maintaining village security.")
+    r22 = gm.new_room(name="Park", desc="A peaceful park with a mysterious well in the center.")
+    r23 = gm.new_room(name="Sheriff's Office", desc="Responsible for maintaining village security.")
 
     # Bottom row (Row3)
     r31 = gm.new_room(name="House 1", desc="A typical resident's home.")
@@ -34,47 +34,57 @@ def generate_village_map(output_file="./village_game.z8"):
     # Horizontal connections (East-West)
     gm.connect(r11.east, r12.west)  # Shop -> Village Committee
     gm.connect(r12.east, r13.west)  # Village Committee -> Hospital
-    gm.connect(r21.east, r22.west)  # School -> Central Square
-    gm.connect(r22.east, r23.west)  # Central Square -> Police Station
+    gm.connect(r21.east, r22.west)  # School -> Park
+    gm.connect(r22.east, r23.west)  # Park -> Sheriff's Office
     gm.connect(r31.east, r32.west)  # House 1 -> House 2
     gm.connect(r32.east, r33.west)  # House 2 -> Forest
 
     # Vertical connections (North-South)
     gm.connect(r11.south, r21.north)  # Village Committee -> School
-    gm.connect(r12.south, r22.north)  # Shop -> Central Square
-    gm.connect(r13.south, r23.north)  # Police Station -> Hospital
+    gm.connect(r12.south, r22.north)  # Shop -> Park
+    gm.connect(r13.south, r23.north)  # Sheriff's Office -> Hospital
     gm.connect(r21.south, r31.north)  # School -> House 1
-    gm.connect(r22.south, r32.north)  # Central Square -> House 2
+    gm.connect(r22.south, r32.north)  # Park -> House 2
     gm.connect(r23.south, r33.north)  # Hospital -> Forest
 
     # --- 3. Add interactive objects ---
-    # Add a well at the central square
-    well = gm.new("c", name="well", desc="An ancient well. You might need a rope to explore it.")
-    gm.add_fact("in", well, r22)
+    # Add the Sheriff character
+    sheriff = gm.new('c', 'Sheriff', "A stern-looking law enforcement officer")
+    sheriff.add_property('open')
+    r23.add(sheriff)  # Add sheriff to the Sheriff's Office
 
-    # Add a treasure in the well
-    treasure = gm.new("o", name="treasure", desc="A mysterious ancient treasure!")
-    gm.add_fact("in", treasure, well)
+    # Add a locked well in the Park
+    well = gm.new('c', 'Well', "A well in the center of the village")
+    well.add_property('locked')
+    r22.add(well)
 
-    # Add a rope in the forest
-    rope = gm.new("o", name="rope", desc="A strong rope that could be useful.")
-    gm.add_fact("in", rope, r33)
-    gm.add_fact("takeable", rope)
+    # add vendor
+    vendor = gm.new('c', 'Vendor', "A vendor selling goods")
+    vendor.add_property('locked')
+    r11.add(vendor)
 
-    # Make the well require the rope to access
-    gm.add_fact("locked", well)
+    # Add a rope that can be used with the well
+    rope = gm.new('k', 'rope', "a rope")
+    vendor.add(rope)
+
+    # add knife
+    knife = gm.new('o', 'knife', "a sharp knife, with blood on it")
+    well.add(knife)
     gm.add_fact("match", rope, well)
 
-    # Set player's starting position at House 1
+    # money
+    money = gm.new('k', 'money', "a bag of money")
+    gm.add_fact("match", money, vendor)
+    
+    r31.add(money)
+
     gm.set_player(r31)
-    # Create a win condition when player has the treasure
-    gm.add_fact("winnable", treasure)
-    gm.add_fact("winning", treasure)
-    quest_commands = [
-        "Go north"
-    ]
-    gm.set_quest_from_commands(quest_commands)
     # Build and save the game
+
+    # quest_commands = [
+    #     "go east"
+    # ]
+    # gm.set_quest_from_commands(quest_commands)
     game = gm.build()
     gm.compile(output_file)
     
