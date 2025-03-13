@@ -1,10 +1,10 @@
 import textworld.gym
 from textworld import gym
 from textworld import EnvInfos
-import ast
+import json
 from openai import OpenAI
 
-client = OpenAI(api_key="key here")
+client = OpenAI(api_key="API_KEY")
 
 # Specify your game file
 game_file = "village_game.z8"
@@ -23,64 +23,86 @@ done = False
 # These containers/NPCs can hold items and interact with the player
 # 
 def make_action(obs, infos, plain_text_explanation):
-    prompt_template = f"""
-    You are a textwold command generator.
-    another LLM will provide you the command explanation.
-    You need to generate the step by step command to finish the task.
-    Player are now in the following location:
-    {obs.split("-= ")[1].split(" =-")[0] if "-= " in obs and " =-" in obs else ""}
-    Inventory:
-    {infos.get("inventory", [])}
-    A village map with 9 rooms in a 3x3 grid layout:
-    Top row:
-    - Shop (contains Vendor)
-    - Village Committee 
-    - Hospital
+    current_location = obs.split("-= ")[1].split(" =-")[0] if "-= " in obs and " =-" in obs else ""
+    prompt_template = prompt_template = f"""
+        <question>
+        A player is navigating a TextWorld Microsoft research game and needs to execute a step-by-step sequence of commands to reach the desired destination or complete a task. The map is 3x3 grid layout, each command only has one action, which means a action can only move the player one grid per time.
+        </question>
+        <game rules>
+        - The player can only take one action per time.
+        - The player can only move one grid per time.
+        - The player can only move to the adjacent grid.
+        </game rules>
 
-    Middle row:
-    - School
-    - Park (contains Well)
-    - Sheriff's Office (contains Sheriff)
+        <valid actions>
+        Commands include movement ("go <dir>"), interaction ("take ...", "open ...", if in container, "take ... from ...", if locked, "unlock ... with ...").
+        </valid actions>
 
-    Bottom row:
-    - House 1
-    - House 2
-    - Forest (contains Drunker)
+        <response requirements>
+        Your response must follow a structured reasoning process with two distinct action types: **"Inner Thinking"**, **"Verifiy Thinking"**, and **"Instruction Summarization"**.
 
-    Available items and their locations:
-    {infos.get("facts", [])}
-    
-    You can check if an item is in a container/NPC by looking for facts like:
-    'in(item_name: type, container_name: type)'
-    For example:
-    - 'in(rope: o, Vendor: c)' means Vendor has a rope
-    - 'in(knife: o, Well: c)' means Well contains a knife
-    
-    Item types:
-    - o: objects (rope, knife)
-    - k: key items (wine, money) 
-    - c: containers/NPCs (Vendor, Sheriff, Well, Drunker)
+        1. **Inner Thinking**: Reconstruct the reasoning process step by step. Each step should have a brief title for clarity.
+            - Grid Layout:
+                - Shop is at the northwest corner. Its east is the Village Committee, and its south is the School.
+                - Village Committee is at the north-central position. Its west is the Shop, its east is the Hospital, and its south is the Park.
+                - Hospital is at the northeast corner. Its west is the Village Committee, and its south is the Sheriff's Office.
+                - School is at the middle row, west side. Its north is the Shop, its east is the Park, and its south is House 1.
+                - Park is at the center of the map. Its north is the Village Committee, its west is the School, its east is the Sheriff's Office, and its south is House 2.
+                - Sheriff's Office is at the middle row, east side. Its north is the Hospital, its west is the Park, and its south is the Forest.
+                - House 1 is at the southwest corner. Its north is the School, and its east is House 2.
+                - House 2 is at the south-central position. Its north is the Park, its west is House 1, and its east is Forest.
+                - Forest is at the southeast corner. Its north is the Sheriff's Office, and its west is House 2.
+            
+            - Consider the player's current location: 
+                {current_location}
+            - Inventory: {infos.get("inventory", [])}
+                
+            - Identify the target location and determine the optimal path.
 
-    Rooms are connected horizontally and vertically to adjacent rooms.
-    Your output should be a list of commands, each command is a string.
-    for example:
-    if user want to go to the shop, and current location is the house 1, you should return:
-    ["go north", "go north"]
-    if user want to go to the shop, and current location is the house 2, you should return:
-    ["go west", "go north", "go north"]
-    You can only do one action at a time.
-    so, if current location is the house 1 and want to go to the shop, you can only return ["go north", "go north"] not just ["go north"]
-    you can only return the command list, no other text.
-    """
+            - Use logical reasoning to determine the **shortest path** to the target location while considering obstacles and key items.
 
+        2. **Verifiy Thinking**: If a mistake is found, correct it by backtracking.
+        3. **Instruction Summarization**: Summarize key takeaways from the new reasoning process and provide actionable instructions.
+            - Output should strictly be a JSON list of step-by-step commands.
+            - Example format:
+            {{
+                "CoT": [
+                    {{"action": "Inner Thinking", "title": "Identify current position", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "Identify the target location", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "Determine shortest path", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "Make draft of the command", "content": "..."}},
+                    {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "..."}},
+                    {{"action": "Instruction Summarization", "content": ["...command 1", "...command 2"]}}
+                ]
+            }}
+            Do NOT include any extra text outside of the JSON format.
+            </response requirements>
+
+            <example>
+            Golden standard:
+            - command explanation: Go to the Park
+            - current location: House 1
+                {{
+                    "CoT": [
+                        {{"action": "Inner Thinking", "title": "Identify current position", "content": "The player is currently at House 1, which is in the bottom row, left column of the grid."}},
+                        {{"action": "Inner Thinking", "title": "Identify the target location", "content": "The target location is the Park, which is in the middle row, center column of the grid."}},
+                        {{"action": "Inner Thinking", "title": "Determine shortest path", "content": "From House 1, move north to School, then move east to Park."}},
+                        {{"action": "Inner Thinking", "title": "Make draft of the command", "content": "The commands should be: ['go north', 'go east']."}},
+                        {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from House 1 to School, and 'go east' moves the player from School to Park."}},
+                        {{"action": "Instruction Summarization", "content": ["go north", "go east"]}}
+                    ]
+                }}
+            </example>
+        """
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "system", "content": prompt_template},
                   {"role": "user", "content": f"Here is the command explanation: {plain_text_explanation}"}],
         max_tokens=1000,
-        temperature=0.0,
+        temperature=0.3,
     )
-    list_of_commands = ast.literal_eval(response.choices[0].message.content)
+    print(response.choices[0].message.content)
+    list_of_commands = json.loads(response.choices[0].message.content)["CoT"][5]["content"]
     for command in list_of_commands:
         print(f"\nExecuting command: {command}")
         print(obs)
@@ -91,7 +113,15 @@ def make_action(obs, infos, plain_text_explanation):
     return obs, reward, done, infos
     
 #  test the make_action function
-make_action(obs, infos, "go to the Forest")
+obs, reward, done, infos = make_action(obs, infos, "go to the Shop")
+obs, reward, done, infos = make_action(obs, infos, "go to the House 2")
+obs, reward, done, infos = make_action(obs, infos, "go to the Forest")
+obs, reward, done, infos = make_action(obs, infos, "go to the Sheriff's Office")
+obs, reward, done, infos = make_action(obs, infos, "go to the Hospital")
+obs, reward, done, infos = make_action(obs, infos, "go to the Park")
+obs, reward, done, infos = make_action(obs, infos, "go to the Village Committee")
+obs, reward, done, infos = make_action(obs, infos, "go to the School")
+
 # print(infos.get("location", []))
 
 # while not done:
@@ -119,3 +149,29 @@ make_action(obs, infos, "go to the Forest")
 #     obs, reward, done, infos = env.step(action)
 
 # print("Game Over!")
+
+
+# prompt_template = """<question>
+# {}
+# </question>
+# <previous reasoning>
+# {}
+# </previous reasoning>
+# <response requirements>
+# Your response must follow a structured reasoning process with two distinct action types: **"Inner Thinking"**, and **"Instruction Summarization"**.
+# 2. **Inner Thinking**: Reconstruct the reasoning process step by step. Each step should have a brief title for clarity.
+# 3. **Instruction Summarization**: Summarize key takeaways from the new reasoning process and provide actionable instructions and reasons. Do not mention past mistakes.
+# </response requirements>
+# <question> contains the main query, while <previous reasoning> documents prior reasoning. Your task is to continue with the **Inner Thinking** step. I have manually reviewed the reasoning and determined that the Conclusion is incorrect. I will secretly provide the correct answer as "{}", but you must not reveal that you know it. Instead, refine the reasoning through **Inner Thinking**, leading to a well-structured **Instruction Summarization**.
+# ### Output Format
+# Adhere strictly to the following JSON format:
+# ```json
+# {{
+# "CoT": [
+#     {{"action": "Inner Thinking", "title": "...", "content": "..."}},
+#     ...,
+#     {{"action": "Instruction Summarization", "content": "..."}}
+# ]
+# }}
+# ```
+# """
