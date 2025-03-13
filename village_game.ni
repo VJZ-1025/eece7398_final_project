@@ -42,11 +42,11 @@ The description of r_2 is "[Hospital part 0]".
 
 The r_1 is mapped west of r_2.
 The r_5 is mapped south of r_2.
-Understand "scullery" as r_4.
-The internal name of r_4 is "scullery".
-The printed name of r_4 is "-= Scullery =-".
-The scullery part 0 is some text that varies. The scullery part 0 is "A peaceful park with a mysterious well in the center.".
-The description of r_4 is "[scullery part 0]".
+Understand "sauna" as r_4.
+The internal name of r_4 is "sauna".
+The printed name of r_4 is "-= Sauna =-".
+The sauna part 0 is some text that varies. The sauna part 0 is "A peaceful park with a mysterious well in the center.".
+The description of r_4 is "[sauna part 0]".
 
 The r_3 is mapped west of r_4.
 The r_7 is mapped south of r_4.
@@ -96,12 +96,12 @@ The description of r_8 is "[Forest part 0]".
 The r_7 is mapped west of r_8.
 The r_5 is mapped north of r_8.
 
-The c_0 and the c_1 and the c_2 are containers.
-The c_0 and the c_1 and the c_2 are privately-named.
+The c_0 and the c_1 and the c_2 and the c_3 are containers.
+The c_0 and the c_1 and the c_2 and the c_3 are privately-named.
 The k_1 and the k_0 are keys.
 The k_1 and the k_0 are privately-named.
-The o_0 are object-likes.
-The o_0 are privately-named.
+The o_0 and the o_1 and the o_2 are object-likes.
+The o_0 and the o_1 and the o_2 are privately-named.
 The r_1 and the r_0 and the r_2 and the r_4 and the r_3 and the r_5 and the r_7 and the r_6 and the r_8 are rooms.
 The r_1 and the r_0 and the r_2 and the r_4 and the r_3 and the r_5 and the r_7 and the r_6 and the r_8 are privately-named.
 
@@ -114,26 +114,39 @@ The description of c_1 is "A well in the center of the village".
 The printed name of c_1 is "Well".
 Understand "Well" as c_1.
 The c_1 is in r_4.
-The c_1 is locked.
+The c_1 is open.
 The description of c_2 is "A vendor selling goods".
 The printed name of c_2 is "Vendor".
 Understand "Vendor" as c_2.
 The c_2 is in r_0.
 The c_2 is locked.
+The description of c_3 is "a drunker lying on the ground".
+The printed name of c_3 is "Drunker".
+Understand "Drunker" as c_3.
+The c_3 is in r_8.
+The c_3 is locked.
 The description of k_1 is "a bag of money".
 The printed name of k_1 is "money".
 Understand "money" as k_1.
 The k_1 is in r_6.
 The matching key of the c_2 is the k_1.
-The description of k_0 is "a rope".
-The printed name of k_0 is "rope".
-Understand "rope" as k_0.
+The description of k_0 is "a bottle of wine".
+The printed name of k_0 is "wine".
+Understand "wine" as k_0.
 The k_0 is in the c_2.
-The matching key of the c_1 is the k_0.
-The description of o_0 is "a sharp knife, with blood on it".
-The printed name of o_0 is "knife".
-Understand "knife" as o_0.
-The o_0 is in the c_1.
+The matching key of the c_3 is the k_0.
+The description of o_0 is "a rope".
+The printed name of o_0 is "rope".
+Understand "rope" as o_0.
+The o_0 is in the c_2.
+The description of o_1 is "a sharp knife, with blood on it, finger prints shows it's vendor's".
+The printed name of o_1 is "knife".
+Understand "knife" as o_1.
+The o_1 is in the c_1.
+The description of o_2 is "a rope".
+The printed name of o_2 is "rope".
+Understand "rope" as o_2.
+The o_2 is in the c_3.
 
 
 The player is in r_6.

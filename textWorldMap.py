@@ -55,7 +55,7 @@ def generate_village_map(output_file="./village_game.z8"):
 
     # Add a locked well in the Park
     well = gm.new('c', 'Well', "A well in the center of the village")
-    well.add_property('locked')
+    well.add_property('open')
     r22.add(well)
 
     # add vendor
@@ -64,19 +64,29 @@ def generate_village_map(output_file="./village_game.z8"):
     r11.add(vendor)
 
     # Add a rope that can be used with the well
-    rope = gm.new('k', 'rope', "a rope")
-    vendor.add(rope)
+    rope1 = gm.new('o', 'rope', "a rope")
+    vendor.add(rope1)
+
+    # add wine
+    wine = gm.new('k', 'wine', "a bottle of wine")
+    vendor.add(wine)
 
     # add knife
-    knife = gm.new('o', 'knife', "a sharp knife, with blood on it")
+    knife = gm.new('o', 'knife', "a sharp knife, with blood on it, finger prints shows it's vendor's")
     well.add(knife)
-    gm.add_fact("match", rope, well)
 
     # money
     money = gm.new('k', 'money', "a bag of money")
     gm.add_fact("match", money, vendor)
-    
     r31.add(money)
+
+    #drunker
+    drunker = gm.new('c', 'Drunker', "a drunker lying on the ground")
+    drunker.add_property('locked')
+    gm.add_fact("match", wine, drunker)
+    rope2 = gm.new('o', 'rope', "a rope")
+    drunker.add(rope2)
+    r33.add(drunker)
 
     gm.set_player(r31)
     # Build and save the game
@@ -85,6 +95,7 @@ def generate_village_map(output_file="./village_game.z8"):
     #     "go east"
     # ]
     # gm.set_quest_from_commands(quest_commands)
+    
     game = gm.build()
     gm.compile(output_file)
     
