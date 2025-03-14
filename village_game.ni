@@ -42,11 +42,11 @@ The description of r_2 is "[Hospital part 0]".
 
 The r_1 is mapped west of r_2.
 The r_5 is mapped south of r_2.
-Understand "sauna" as r_4.
-The internal name of r_4 is "sauna".
-The printed name of r_4 is "-= Sauna =-".
-The sauna part 0 is some text that varies. The sauna part 0 is "A peaceful park with a mysterious well in the center.".
-The description of r_4 is "[sauna part 0]".
+Understand "Center Park" as r_4.
+The internal name of r_4 is "Center Park".
+The printed name of r_4 is "-= Center Park =-".
+The Center Park part 0 is some text that varies. The Center Park part 0 is "A peaceful park with a mysterious well in the center.".
+The description of r_4 is "[Center Park part 0]".
 
 The r_3 is mapped west of r_4.
 The r_7 is mapped south of r_4.

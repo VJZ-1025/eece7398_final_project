@@ -22,7 +22,7 @@ def generate_village_map(output_file="./village_game.z8"):
 
     # Middle row (Row2)
     r21 = gm.new_room(name="School", desc="Where children receive their education.")
-    r22 = gm.new_room(name="Park", desc="A peaceful park with a mysterious well in the center.")
+    r22 = gm.new_room(name="Center Park", desc="A peaceful park with a mysterious well in the center.")
     r23 = gm.new_room(name="Sheriff's Office", desc="Responsible for maintaining village security.")
 
     # Bottom row (Row3)

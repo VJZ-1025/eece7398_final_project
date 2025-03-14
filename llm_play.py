@@ -44,13 +44,13 @@ def make_action(obs, infos, plain_text_explanation):
         1. **Inner Thinking**: Reconstruct the reasoning process step by step. Each step should have a brief title for clarity.
             - Grid Layout:
                 - Shop is at the northwest corner. Its east is the Village Committee, and its south is the School.
-                - Village Committee is at the north-central position. Its west is the Shop, its east is the Hospital, and its south is the Park.
+                - Village Committee is at the north-central position. Its west is the Shop, its east is the Hospital, and its south is the Center Park.
                 - Hospital is at the northeast corner. Its west is the Village Committee, and its south is the Sheriff's Office.
-                - School is at the middle row, west side. Its north is the Shop, its east is the Park, and its south is House 1.
-                - Park is at the center of the map. Its north is the Village Committee, its west is the School, its east is the Sheriff's Office, and its south is House 2.
-                - Sheriff's Office is at the middle row, east side. Its north is the Hospital, its west is the Park, and its south is the Forest.
+                - School is at the middle row, west side. Its north is the Shop, its east is the Center Park, and its south is House 1.
+                - Center Park is at the center of the map. Its north is the Village Committee, its west is the School, its east is the Sheriff's Office, and its south is House 2.
+                - Sheriff's Office is at the middle row, east side. Its north is the Hospital, its west is the Center Park, and its south is the Forest.
                 - House 1 is at the southwest corner. Its north is the School, and its east is House 2.
-                - House 2 is at the south-central position. Its north is the Park, its west is House 1, and its east is Forest.
+                - House 2 is at the south-central position. Its north is the Center Park, its west is House 1, and its east is Forest.
                 - Forest is at the southeast corner. Its north is the Sheriff's Office, and its west is House 2.
             
             - Consider the player's current location: 
@@ -80,26 +80,24 @@ def make_action(obs, infos, plain_text_explanation):
 
             <example>
             Golden standard:
-            - command explanation: Go to the Park
+            - command explanation: Go to the Center Park
             - current location: House 1
                 {{
                     "CoT": [
                         {{"action": "Inner Thinking", "title": "Identify current position", "content": "The player is currently at House 1, which is in the bottom row, left column of the grid."}},
-                        {{"action": "Inner Thinking", "title": "Identify the target location", "content": "The target location is the Park, which is in the middle row, center column of the grid."}},
-                        {{"action": "Inner Thinking", "title": "Determine shortest path", "content": "From House 1, move north to School, then move east to Park."}},
+                        {{"action": "Inner Thinking", "title": "Identify the target location", "content": "The target location is the Center Park, which is in the middle row, center column of the grid."}},
+                        {{"action": "Inner Thinking", "title": "Determine shortest path", "content": "From House 1, move north to School, then move east to Center Park."}},
                         {{"action": "Inner Thinking", "title": "Make draft of the command", "content": "The commands should be: ['go north', 'go east']."}},
-                        {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from House 1 to School, and 'go east' moves the player from School to Park."}},
+                        {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from House 1 to School, and 'go east' moves the player from School to Center Park."}},
                         {{"action": "Instruction Summarization", "content": ["go north", "go east"]}}
                     ]
                 }}
             </example>
         """
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="o3-mini",
         messages=[{"role": "system", "content": prompt_template},
                   {"role": "user", "content": f"Here is the command explanation: {plain_text_explanation}"}],
-        max_tokens=1000,
-        temperature=0.3,
     )
     print(response.choices[0].message.content)
     list_of_commands = json.loads(response.choices[0].message.content)["CoT"][5]["content"]
@@ -118,7 +116,7 @@ obs, reward, done, infos = make_action(obs, infos, "go to the House 2")
 obs, reward, done, infos = make_action(obs, infos, "go to the Forest")
 obs, reward, done, infos = make_action(obs, infos, "go to the Sheriff's Office")
 obs, reward, done, infos = make_action(obs, infos, "go to the Hospital")
-obs, reward, done, infos = make_action(obs, infos, "go to the Park")
+obs, reward, done, infos = make_action(obs, infos, "go to the Center Park")
 obs, reward, done, infos = make_action(obs, infos, "go to the Village Committee")
 obs, reward, done, infos = make_action(obs, infos, "go to the School")
 
