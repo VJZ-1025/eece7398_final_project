@@ -53,11 +53,13 @@ def make_action(obs, infos, plain_text_explanation):
             5. close vendor
             output: ['unlock vendor with money', 'open vendor', 'take <item> from vendor', 'insert money into vendor', 'close vendor']
             - check inventory has money, if not, reject the command, return ["reject command"]
+            - check current location at shop, if not, go to shop first, then execute the command
         - down to well: This is is a shortcut that combines multiple actions:
             1. insert rope into well
             2. take knife from from well
             output: ['insert rope into well', 'take knife from well']
             - check inventory has rope, if not, reject the command, return ["reject command"]
+            - check current location at well, if not, go to well first, then execute the command
         </special commands>
 
         <response requirements>
@@ -75,6 +77,17 @@ def make_action(obs, infos, plain_text_explanation):
                 - House 2 is at the south-central position. Its north is the Center Park, its west is House 1, and its east is Forest.
                 - Forest is at the southeast corner. Its north is the Sheriff's Office, and its west is House 2.
             
+            - Container:
+                - Vendor:
+                    - Location: Shop
+                - Well:
+                    - Location: Center Park
+                - Sheriff:
+                    - Location: Sheriff's Office
+                - Drunk:
+                    - Location: Forest
+
+            
             - Consider the player's current location: 
                 {current_location}
             - Inventory: {infos.get("inventory", [])}
@@ -83,7 +96,10 @@ def make_action(obs, infos, plain_text_explanation):
 
             - Use logical reasoning to determine the **shortest path** to the target location while considering obstacles and key items.
 
-            - If the target cannot be reached, return ["reject command"]
+            - Final output should shows the status of the command, which is "approved", "rejected", or "confused"
+            - If the command is rejected, return status: "rejected" and content: ["reject command"]
+            - If the command is confused, return status: "confused" and content: ["confused command"]
+            - If the command is approved, return status: "approved" and content: ["...command 1", "...command 2"]
 
         2. **Verifiy Thinking**: If a mistake is found, correct it by backtracking.
         3. **Instruction Summarization**: Summarize key takeaways from the new reasoning process and provide actionable instructions.
@@ -96,10 +112,10 @@ def make_action(obs, infos, plain_text_explanation):
                     {{"action": "Inner Thinking", "title": "Determine the optimal path and commands", "content": "..."}},
                     {{"action": "Inner Thinking", "title": "Make draft of the command", "content": "..."}},
                     {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "..."}},
-                    {{"action": "Instruction Summarization", "content": ["...command 1", "...command 2"]}}
+                    {{"action": "Instruction Summarization", "status": "approved|rejected|confused", "content": ["...command 1", "...command 2"]}}
                 ]
             }}
-            Do NOT include any extra text outside of the JSON format.
+            ***Do NOT include any extra text outside of the JSON format, do NOT modify the action and title, DO NOT modify the number of CoT***
             </response requirements>
 
             <example>
@@ -113,7 +129,7 @@ def make_action(obs, infos, plain_text_explanation):
                         {{"action": "Inner Thinking", "title": "Determine the optimal path and commands", "content": "Take money, then from house 1 to shop go north to school, then go north to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
                         {{"action": "Inner Thinking", "title": "Make draft of the command", "content": ['take money', 'go north', 'go north', 'unlock vendor with money', 'open vendor', 'take rope from vendor', 'insert money into vendor', 'close vendor']}},
                         {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from House 1 to School, and 'go north' moves the player from School to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
-                        {{"action": "Instruction Summarization", "content": ["take money", "go north", "go north", "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"]}}
+                        {{"action": "Instruction Summarization", "status": "approved", "content": ["take money", "go north", "go north", "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"]}}
                     ]
                 }}
             </example>
@@ -124,9 +140,14 @@ def make_action(obs, infos, plain_text_explanation):
                   {"role": "user", "content": f"Here is the command explanation: {plain_text_explanation}"}],
     )
     print(response.choices[0].message.content)
+    status = json.loads(response.choices[0].message.content)["CoT"][5]["status"]
+    if status == "rejected":
+        print("enh enh, you can't do that")
+        obs, reward, done, infos = env.step("")
+        return obs, reward, done, infos
     list_of_commands = json.loads(response.choices[0].message.content)["CoT"][5]["content"]
     if list_of_commands == ["reject command"]:
-        print("enh enh, you can't do that")
+        print("nah nah, you can't do that")
         return obs, reward, done, infos
     for command in list_of_commands:
         # print(f"\nExecuting command: {command}")
@@ -140,6 +161,7 @@ def make_action(obs, infos, plain_text_explanation):
 #  test the make_action function
 obs, reward, done, infos = make_action(obs, infos, "buy rope")
 obs, reward, done, infos = make_action(obs, infos, "take the money buy rope")
+obs, reward, done, infos = make_action(obs, infos, "down to well")
 # obs, reward, done, infos = make_action(obs, infos, "Buy wine")
 # obs, reward, done, infos = make_action(obs, infos, "go to the Forest")
 # obs, reward, done, infos = make_action(obs, infos, "go to the Sheriff's Office")
