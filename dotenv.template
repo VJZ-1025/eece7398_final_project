@@ -1,0 +1,6 @@
+API_KEY=[INTPUT_YOUR_API_KEY]
+
+
+###
+change [INTPUT_YOUR_API_KEY] to your api key and in command line, insert `cp dotenv.template .env`
+###

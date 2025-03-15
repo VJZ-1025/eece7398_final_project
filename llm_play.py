@@ -3,8 +3,12 @@ from textworld import gym
 from textworld import EnvInfos
 import json
 from openai import OpenAI
+import os
+from dotenv import load_dotenv
+load_dotenv()
+API_KEY = os.getenv("API_KEY")
 
-client = OpenAI(api_key="API_KEY")
+client = OpenAI(api_key=API_KEY)
 
 # Specify your game file
 game_file = "village_game.z8"
@@ -35,8 +39,26 @@ def make_action(obs, infos, plain_text_explanation):
         </game rules>
 
         <valid actions>
-        Commands include movement ("go <dir>"), interaction ("take ...", "open ...", if in container, "take ... from ...", if locked, "unlock ... with ...").
+        - movement: go <dir> (dir: north, south, east, west)    
+        - interaction: take <item>, open <container>, take <item> from <container>, unlock <container> with <key>
         </valid actions>
+
+        <special commands>
+        ***NOTE: Special commands MUST be executed in the order as listed below***
+        - buy <item>: This command is a shortcut that combines multiple actions:
+            1. unlock vendor with money
+            2. open vender
+            3. take <item> from vendor
+            4. insert money into vendor
+            5. close vendor
+            output: ['unlock vendor with money', 'open vendor', 'take <item> from vendor', 'insert money into vendor', 'close vendor']
+            - check inventory has money, if not, reject the command, return ["reject command"]
+        - down to well: This is is a shortcut that combines multiple actions:
+            1. insert rope into well
+            2. take knife from from well
+            output: ['insert rope into well', 'take knife from well']
+            - check inventory has rope, if not, reject the command, return ["reject command"]
+        </special commands>
 
         <response requirements>
         Your response must follow a structured reasoning process with two distinct action types: **"Inner Thinking"**, **"Verifiy Thinking"**, and **"Instruction Summarization"**.
@@ -57,9 +79,11 @@ def make_action(obs, infos, plain_text_explanation):
                 {current_location}
             - Inventory: {infos.get("inventory", [])}
                 
-            - Identify the target location and determine the optimal path.
+            - Identify the target and determine the optimal path.
 
             - Use logical reasoning to determine the **shortest path** to the target location while considering obstacles and key items.
+
+            - If the target cannot be reached, return ["reject command"]
 
         2. **Verifiy Thinking**: If a mistake is found, correct it by backtracking.
         3. **Instruction Summarization**: Summarize key takeaways from the new reasoning process and provide actionable instructions.
@@ -67,9 +91,9 @@ def make_action(obs, infos, plain_text_explanation):
             - Example format:
             {{
                 "CoT": [
-                    {{"action": "Inner Thinking", "title": "Identify current position", "content": "..."}},
-                    {{"action": "Inner Thinking", "title": "Identify the target location", "content": "..."}},
-                    {{"action": "Inner Thinking", "title": "Determine shortest path", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "Identify current situation", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "Identify the target", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "Determine the optimal path and commands", "content": "..."}},
                     {{"action": "Inner Thinking", "title": "Make draft of the command", "content": "..."}},
                     {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "..."}},
                     {{"action": "Instruction Summarization", "content": ["...command 1", "...command 2"]}}
@@ -80,16 +104,16 @@ def make_action(obs, infos, plain_text_explanation):
 
             <example>
             Golden standard:
-            - command explanation: Go to the Center Park
+            - command explanation: Take the money and go to shop then buy rope
             - current location: House 1
                 {{
                     "CoT": [
-                        {{"action": "Inner Thinking", "title": "Identify current position", "content": "The player is currently at House 1, which is in the bottom row, left column of the grid."}},
-                        {{"action": "Inner Thinking", "title": "Identify the target location", "content": "The target location is the Center Park, which is in the middle row, center column of the grid."}},
-                        {{"action": "Inner Thinking", "title": "Determine shortest path", "content": "From House 1, move north to School, then move east to Center Park."}},
-                        {{"action": "Inner Thinking", "title": "Make draft of the command", "content": "The commands should be: ['go north', 'go east']."}},
-                        {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from House 1 to School, and 'go east' moves the player from School to Center Park."}},
-                        {{"action": "Instruction Summarization", "content": ["go north", "go east"]}}
+                        {{"action": "Inner Thinking", "title": "Identify current situation", "content": "The player is currently at House 1, which is in the bottom row, left column of the grid, the player inventory is empty."}},
+                        {{"action": "Inner Thinking", "title": "Identify the target", "content": "The target is take the money then go to shop, and buy rope, because buy rope is a special command, so it should divde to unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
+                        {{"action": "Inner Thinking", "title": "Determine the optimal path and commands", "content": "Take money, then from house 1 to shop go north to school, then go north to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
+                        {{"action": "Inner Thinking", "title": "Make draft of the command", "content": ['take money', 'go north', 'go north', 'unlock vendor with money', 'open vendor', 'take rope from vendor', 'insert money into vendor', 'close vendor']}},
+                        {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from House 1 to School, and 'go north' moves the player from School to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
+                        {{"action": "Instruction Summarization", "content": ["take money", "go north", "go north", "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"]}}
                     ]
                 }}
             </example>
@@ -101,8 +125,11 @@ def make_action(obs, infos, plain_text_explanation):
     )
     print(response.choices[0].message.content)
     list_of_commands = json.loads(response.choices[0].message.content)["CoT"][5]["content"]
+    if list_of_commands == ["reject command"]:
+        print("enh enh, you can't do that")
+        return obs, reward, done, infos
     for command in list_of_commands:
-        print(f"\nExecuting command: {command}")
+        # print(f"\nExecuting command: {command}")
         print(obs)
         obs, reward, done, infos = env.step(command)
         print(obs)
@@ -111,14 +138,15 @@ def make_action(obs, infos, plain_text_explanation):
     return obs, reward, done, infos
     
 #  test the make_action function
-obs, reward, done, infos = make_action(obs, infos, "go to the Shop")
-obs, reward, done, infos = make_action(obs, infos, "go to the House 2")
-obs, reward, done, infos = make_action(obs, infos, "go to the Forest")
-obs, reward, done, infos = make_action(obs, infos, "go to the Sheriff's Office")
-obs, reward, done, infos = make_action(obs, infos, "go to the Hospital")
-obs, reward, done, infos = make_action(obs, infos, "go to the Center Park")
-obs, reward, done, infos = make_action(obs, infos, "go to the Village Committee")
-obs, reward, done, infos = make_action(obs, infos, "go to the School")
+obs, reward, done, infos = make_action(obs, infos, "buy rope")
+obs, reward, done, infos = make_action(obs, infos, "take the money buy rope")
+# obs, reward, done, infos = make_action(obs, infos, "Buy wine")
+# obs, reward, done, infos = make_action(obs, infos, "go to the Forest")
+# obs, reward, done, infos = make_action(obs, infos, "go to the Sheriff's Office")
+# obs, reward, done, infos = make_action(obs, infos, "go to the Hospital")
+# obs, reward, done, infos = make_action(obs, infos, "go to the Center Park")
+# obs, reward, done, infos = make_action(obs, infos, "go to the Village Committee")
+# obs, reward, done, infos = make_action(obs, infos, "go to the School")
 
 # print(infos.get("location", []))
 
