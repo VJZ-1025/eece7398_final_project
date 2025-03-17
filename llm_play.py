@@ -5,11 +5,12 @@ import json
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+import tiktoken
 load_dotenv()
-API_KEY = os.getenv("API_KEY")
-
-client = OpenAI(api_key=API_KEY)
-
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+action_client = OpenAI(api_key=OPENAI_API_KEY)
+main_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 # Specify your game file
 game_file = "village_game.z8"
 # Request admissible_commands and facts information
@@ -26,6 +27,30 @@ done = False
 # - Sheriff (indicated by type 'c' in textWorldMap.py)
 # These containers/NPCs can hold items and interact with the player
 # 
+
+def main_llm_interaction(user_input, history, current_location, inventory):
+    """
+    与玩家进行对话的 Main LLM。根据玩家输入和当前上下文，生成一个简明判断（意图）。
+    """
+    prompt = f"""
+    <dialogue>
+    You are the main dialogue LLM communicating with the player. The player is a ghost who cannot interact directly with the world, but a villager is assisting him.
+    Current location: {current_location}
+    Inventory: {inventory}
+    Conversation history: {history}
+    Player input: {user_input}
+    Based on this, provide a concise judgment of the player's intent.
+    Output only the final judgment as plain text.
+    </dialogue>
+    """
+    response = main_client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "system", "content": prompt}],
+        max_tokens=150,
+        temperature=0.3,
+    )
+    return response.choices[0].message.content.strip()
+
 def make_action(obs, infos, plain_text_explanation):
     current_location = obs.split("-= ")[1].split(" =-")[0] if "-= " in obs and " =-" in obs else ""
     prompt_template = prompt_template = f"""
@@ -60,6 +85,16 @@ def make_action(obs, infos, plain_text_explanation):
             output: ['insert rope into well', 'take knife from well']
             - check inventory has rope, if not, reject the command, return ["reject command"]
             - check current location at well, if not, go to well first, then execute the command
+        - give <item> to <npc>: This is is a shortcut that combines multiple actions:
+            1. insert <item> into <npc>
+            output: ['insert <item> into <npc>']
+            - check inventory has item, if not, reject the command, return ["reject command"]
+            - check current location at npc, if not, go to npc first, then execute the command
+            - IMPORTANT: if the npc is "Drunker", do below steps:
+            1. unlock Drunker with <item>
+            2. open Drunker
+            4. insert <item> into Drunker
+        
         </special commands>
 
         <response requirements>
@@ -80,13 +115,30 @@ def make_action(obs, infos, plain_text_explanation):
             - Container:
                 - Vendor:
                     - Location: Shop
+                    - Has items: {check_items_in_container(infos, 'Vendor')}
                 - Well:
                     - Location: Center Park
+                    - Has items: {check_items_in_container(infos, 'Well')}
                 - Sheriff:
                     - Location: Sheriff's Office
-                - Drunk:
+                    - Has items: {check_items_in_container(infos, 'Sheriff')}
+                - Drunker:
                     - Location: Forest
-
+                    - Has items: {check_items_in_container(infos, 'Drunker')}
+            - NPCs (non-player characters):
+                - Villager:
+                    - Location: House 2
+                - Drunker:
+                    - Location: Forest
+                - Sheriff:
+                    - Location: Sheriff's Office
+                - Vendor:
+                    - Location: Shop
+            
+            - NOTE:
+                - Container Sheriff, Drunk, Vendor are NPCs that can hold items, indicated by container: c.
+                - NPC villagers cannot hold items.
+                - Container Well is a well, which is a container that can hold items, its not a NPC.
             
             - Consider the player's current location: 
                 {current_location}
@@ -134,20 +186,22 @@ def make_action(obs, infos, plain_text_explanation):
                 }}
             </example>
         """
-    response = client.chat.completions.create(
+    response = action_client.chat.completions.create(
         model="o3-mini",
         messages=[{"role": "system", "content": prompt_template},
                   {"role": "user", "content": f"Here is the command explanation: {plain_text_explanation}"}],
     )
     print(response.choices[0].message.content)
-    status = json.loads(response.choices[0].message.content)["CoT"][5]["status"]
+    jsonfy_response = json.loads(response.choices[0].message.content)
+    status = jsonfy_response["CoT"][len(jsonfy_response["CoT"]) - 1]["status"]
     if status == "rejected":
         print("enh enh, you can't do that")
         obs, reward, done, infos = env.step("")
         return obs, reward, done, infos
-    list_of_commands = json.loads(response.choices[0].message.content)["CoT"][5]["content"]
+    list_of_commands = jsonfy_response["CoT"][len(jsonfy_response["CoT"]) - 1]["content"]
     if list_of_commands == ["reject command"]:
         print("nah nah, you can't do that")
+        obs, reward, done, infos = env.step("")
         return obs, reward, done, infos
     for command in list_of_commands:
         # print(f"\nExecuting command: {command}")
@@ -157,46 +211,55 @@ def make_action(obs, infos, plain_text_explanation):
         if done:
             return obs, reward, done, infos
     return obs, reward, done, infos
-    
-#  test the make_action function
-obs, reward, done, infos = make_action(obs, infos, "buy rope")
-obs, reward, done, infos = make_action(obs, infos, "take the money buy rope")
-obs, reward, done, infos = make_action(obs, infos, "down to well")
-# obs, reward, done, infos = make_action(obs, infos, "Buy wine")
-# obs, reward, done, infos = make_action(obs, infos, "go to the Forest")
-# obs, reward, done, infos = make_action(obs, infos, "go to the Sheriff's Office")
-# obs, reward, done, infos = make_action(obs, infos, "go to the Hospital")
-# obs, reward, done, infos = make_action(obs, infos, "go to the Center Park")
-# obs, reward, done, infos = make_action(obs, infos, "go to the Village Committee")
-# obs, reward, done, infos = make_action(obs, infos, "go to the School")
 
-# print(infos.get("location", []))
 
-# while not done:
-#     # Display current observation and available actions
-#     print("Current observation:")
-#     print(obs)
-#     print(infos.get("location", []))
-    
-#     # Get current game facts list
-#     facts = infos.get("facts", [])
-#     print("\nCurrent facts:")
-#     for fact in facts:
-#         if "in(knife: o, Sheriff: c)" in str(fact):
-#             print("knife given to sheriff, game over")
-#             done = True
-    
+def check_items_in_container(info, container):
+    '''
 
-#     if done:
-#         break
-#     # Display available actions and wait for player input
-#     print("\nAvailable actions:")
-#     print(infos.get("admissible_commands", []))
-#     action = input("Please enter your action: ").strip()
+    '''
+    items = []
+    for prop in info.get('facts', []):
+        if prop.name == 'in' and prop.arguments[1].name == container:
+            items.append(prop.arguments[0].name)
     
-#     obs, reward, done, infos = env.step(action)
+    if len(items) == 0:
+        return ''
+    else:
+        return ', '.join(items)
 
-# print("Game Over!")
+
+# obs, reward, done, infos = make_action(obs, infos, "take money, buy wine, give wine to drunker, take rope from Drunker, down to well")
+# obs, reward, done, infos = make_action(obs, infos, "give knife to Sheriff")
+
+
+
+
+def main():
+    history = []  # 用于保存对话与游戏推进的历史记录
+    global obs, infos, done
+    while not done:
+        print("\nCurrent scene:")
+        print(obs)
+        current_location = obs.split("-= ")[1].split(" =-")[0] if "-= " in obs and " =-" in obs else ""
+        user_input = input("\nEnter your action (e.g., 'buy rope', 'talk to Vendor', 'down to well'): \n")
+        history.append({"event": "Player Input", "detail": user_input})
+        
+        # Step 1: 调用 Main LLM 进行用户对话，获取玩家判断
+        main_judgment = main_llm_interaction(user_input, history, current_location, infos.get("inventory", []))
+        print("Main LLM judgment:", main_judgment)
+        history.append({"event": "Main LLM Judgment", "detail": main_judgment})
+        
+        # Step 2: 将 Main LLM judgment 提交给 Master LLM，生成具体的行动命令
+        commands = make_action(obs, infos, main_judgment)
+        for cmd in commands:
+            print(f"\nExecuting command: {cmd}")
+            obs, reward, done, infos = env.step(cmd)
+            print(obs)
+            history.append({"event": "Game Progress", "detail": f"Executed command: {cmd}"})
+            if done:
+                break
+        
+    print("Game Over!")
 
 
 # prompt_template = """<question>
