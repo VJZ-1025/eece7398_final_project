@@ -5,6 +5,7 @@ import json
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+from pprint import pprint
 import tiktoken
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -32,10 +33,11 @@ class LLM_Agent:
         self.obs, self.infos = self.env.reset()
         self.done = False
     
-    def user_bridge_llm(self, user_input):
+    def initial_process(self, user_input):
         """
         Main LLM for user communication
         """
+        print("Initial process...")
         prompt = f"""
         <Background>
         You are the main dialogue LLM communicating with the player. You need act as a villager who is assisting the player.
@@ -43,13 +45,32 @@ class LLM_Agent:
         </Background>
         
         <Question>
-        You need to understand the player's intent based on the player's input, and based on the player's intent, you need to generate a output in provided format.
+        You need to understand the player's intent based on the player's input, and classify the player's intent into one of the following categories:
+        - Action: the player wants to take an action
+        - Query: the player wants to ask a question
+        - Talk: the player wants you to talk to someone
+        - Chat: The player wants to chat with you, first you need determine is the input is related to the game, if yes you need to generate the dialog as a villager based on the user's input, else you decide as "other"
+        - Other: the player's intent is not clear, or the player's intent is not related to the game. NOTE: all other intents including asking about weather, time, etc. should be classified as "other"
+
+        IMPORTANT: You MUST classify the player's intent into one of the above categories, and you MUST return the classification in the format provided below.
         </Question>
+
+        <status content>
+        - Action: the content should be a short description of the action the player wants to take
+            - content format: "<a short description of the action>"
+        - Query: the content should determin the question the player wants to ask, and decide if need extra memory to answer the question, format should be json
+            - content format: {{"question": "<a short description of the question>", "memory": True|False, "memory_query": "<a short description of the memory query>"}}
+        - Talk: the content should generate the dialog as a villager based on the user's input, format should be json
+            - content format: {{"npc": "villager|Sheriff|Drunker|Vendor","dialog": "<a short description of the dialog>"}}
+        - Chat: The player wants to chat with you, and you need to generate the dialog as a villager based on the user's input
+            - content formmat "<a short description of the dialog>"
+        - Other: a reason why the player's intent is not clear, or the player's intent is not related to the game
+            - content format: "<a short description of the reason>"
+        </status content>
         
         <game status>
         current location: {self.get_current_location()}
         inventory: {self.get_current_inventory()}
-        memory: {self.get_memory()}
         </game status>
 
         <response requirements>
@@ -63,7 +84,9 @@ class LLM_Agent:
         {{
             "CoT": [
                 {{"action": "Inner Thinking", "title": "understand the player's intent", "content": "..."}},
-                {{"action": "Inner Thinking", "title": "determine the optimal path and commands", "content": "..."}},
+                {{"action": "Inner Thinking", "title": "classify the player's intent", "content": "..."}},
+                {{"action": "Verifiy Thinking", "title": "verify the classification", "content": "..."}},
+                {{"action": "Instruction Summarization", "status": "Action|Query|Talk|Other", "content": "..."}}
             ]
         }}
         """
@@ -71,10 +94,14 @@ class LLM_Agent:
             model="deepseek-chat",
             messages=[{"role": "system", "content": prompt},
                       {"role": "user", "content": user_input}],
-            max_tokens=150,
+            max_tokens=300,
             temperature=0.3,
         )
-        return response.choices[0].message.content.strip()
+        list_actions = json.loads(response.choices[0].message.content)["CoT"]
+        inner_thinking = list_actions[:(len(list_actions) - 1)]
+        pprint(list_actions)
+        content = list_actions[len(list_actions) - 1]
+        return content
     
     def make_action(self, plain_text_explanation):
         print("Action thinking...")
@@ -235,9 +262,20 @@ class LLM_Agent:
         return True
 
 
-    def get_memory(self):
+    def get_memory(self, oringinal_sentence, memory_query):
+        '''
+        Get memory from the original sentence and the memory query
+        Original sentence: the sentence that the player inputs
+        Memory query: The query that LLM generates
+        '''
         # TODO: add memory mechanism
         return self.memory
+    
+    def generate_dialog(self, user_input, prompt, memory):
+        '''
+        Generate the dialog as a villager based on the user's input
+        '''
+        return ""
 
     def check_items_in_container(self, container):
         '''
@@ -261,7 +299,27 @@ class LLM_Agent:
     
     def get_current_location(self):
         return self.obs.split("-= ")[1].split(" =-")[0] if "-= " in self.obs and " =-" in self.obs else ""
-
+    
+    def main_process(self, user_input):
+        '''
+        Main process of the agent
+        '''
+        content = self.initial_process(user_input)
+        if content["status"] == "Action":
+            commands = content["content"]
+            self.make_action(commands)
+        elif content["status"] == "Query":
+            memory_needed = content["memory"]
+            memory = "No memory needed"
+            if memory_needed:
+                memory = self.get_memory(user_input, content["memory_query"])
+            self.generate_dialog(user_input, memory)
+        elif content["status"] == "Talk":
+            print("not yet implemented")
+        elif content["status"] == "Chat":
+            self.generate_dialog(user_input, content["content"])
+        else:
+            print("not yet implemented")
 
 
 # obs, reward, done, infos = make_action(obs, infos, "take money, buy wine, give wine to drunker, take rope from Drunker, down to well")
@@ -269,9 +327,9 @@ class LLM_Agent:
 
 # TEST:
 agent = LLM_Agent("village_game.z8", OPENAI_API_KEY, DEEPSEEK_API_KEY)
-agent.make_action("take money")
+agent.main_process("You should talk to the sheriff about the money")
+# agent.make_action("buy wine")
 
-agent.make_action("buy wine")
 
 
 
