@@ -7,11 +7,27 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: llm_play
+    working_dir: /app
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./textworld_map:/app/textworld_map
+      - ./llm_play.py:/app/llm_play.py
+      - ./app.py:/app/app.py
     ports:
       - 8000:8000
     networks:
       - llm_play_network
-
+  ui:
+    image: ui
+    build:
+      context: .
+      dockerfile: dockerfile-web
+    container_name: ui
+    command: npx vite --host 0.0.0.0 --port 8080
+    ports:
+      - 8080:8080
+    networks:
+      - llm_play_network
   es:
     image: elasticsearch:8.11.1
     container_name: es

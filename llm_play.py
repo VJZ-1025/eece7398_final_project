@@ -6,11 +6,12 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 from pprint import pprint
-import tiktoken
+from elasticsearch import Elasticsearch
+
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-
+ES_HOST = "http://localhost:9200"
 # TODO: This while loop should be modified to use an LLM agent instead of human input
 # The game contains NPCs (non-player characters) like:
 # - Sheriff (indicated by type 'c' in textWorldMap.py)
@@ -19,12 +20,12 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 
 class LLM_Agent:
-    def __init__(self, game_file, openai_api_key, deepseek_api_key):
-        self.game_file = game_file
-        self.action_client = OpenAI(api_key=openai_api_key)
-        self.main_client = OpenAI(api_key=deepseek_api_key, base_url="https://api.deepseek.com")
+    def __init__(self):
+        self.game_file = "./textworld_map/village_game.z8"
+        self.action_client = OpenAI(api_key=OPENAI_API_KEY)
+        self.main_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
         self.infos = EnvInfos(admissible_commands=True, facts=True, inventory=True)
-        self.env_id = textworld.gym.register_games([game_file], request_infos=self.infos, max_episode_steps=None)
+        self.env_id = textworld.gym.register_games([self.game_file], request_infos=self.infos, max_episode_steps=None)
         self.env = gym.make(self.env_id)
         self.obs, self.infos = self.env.reset()
         self.done = False
@@ -326,8 +327,8 @@ class LLM_Agent:
 # obs, reward, done, infos = make_action(obs, infos, "give knife to Sheriff")
 
 # TEST:
-agent = LLM_Agent("village_game.z8", OPENAI_API_KEY, DEEPSEEK_API_KEY)
-agent.main_process("You should talk to the sheriff about the money")
+# agent = LLM_Agent("village_game.z8", OPENAI_API_KEY, DEEPSEEK_API_KEY)
+# agent.main_process("You should talk to the sheriff about the money")
 # agent.make_action("buy wine")
 
 
