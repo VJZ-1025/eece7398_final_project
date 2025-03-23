@@ -47,14 +47,14 @@ export default {
 
       try {
         // Send request to backend
-        const response = await axios.post('/api/command', {
-          command: userMessage
+        const response = await axios.post('/api/chat', {
+          user_input: userMessage
         })
 
         // Add assistant response to chat
         this.messages.push({
           role: 'assistant',
-          content: response.data.response
+          content: response.data.message
         })
       } catch (error) {
         console.error('Error:', error)
