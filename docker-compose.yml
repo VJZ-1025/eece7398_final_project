@@ -1,0 +1,30 @@
+name: llm_play
+version: '3.8'
+services:
+  llm_play:
+    image: llm_play
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm_play
+    ports:
+      - 8000:8000
+    networks:
+      - llm_play_network
+
+  es:
+    image: elasticsearch:8.11.1
+    container_name: es
+    ports:
+      - 9200:9200
+      - 9300:9300
+    environment:
+      - "discovery.type=single-node"
+    volumes:
+      - ./esdata:/usr/share/elasticsearch/data
+    networks:
+      - llm_play_network
+
+networks:
+  llm_play_network:
+    driver: bridge

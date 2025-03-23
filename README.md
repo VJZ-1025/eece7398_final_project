@@ -1,9 +1,16 @@
 # eece7398_final_project
 
 # Before start
-1. `pip install -r Requirements.txt` for install dependencies
+1. `pip install -r requirements.txt` for install dependencies
 2. modify `dotenv.template` to set API key, and command: `cp dotenv.template .env` create ENV file
 3. llm_play.py is ready
+
+# Docker deployment
+Install Docker Desktop first
+
+Run `docker compose up --build -d` for building whole service (not yet developed)
+
+Run `docker compose up --build -d es` for starting Elasticsearch, for development
 
 Current basic idea:
 
