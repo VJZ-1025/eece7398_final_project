@@ -60,7 +60,7 @@ class LLM_Agent:
         - Action: the content should be a short description of the action the player wants to take
             - content format: "<a short description of the action>"
         - Query: the content should determin the question the player wants to ask, and decide if need extra memory to answer the question, format should be json
-            - content format: {{"question": "<a short description of the question>", "memory": True|False, "memory_query": "<a short description of the memory query>"}}
+            - content format: {{"question": "<a short description of the question>", "memory": true|false, "memory_query": "<a short description of the memory query>"}}
         - Talk: the content should generate the dialog as a villager based on the user's input, format should be json
             - content format: {{"npc": "villager|Sheriff|Drunker|Vendor","dialog": "<a short description of the dialog>"}}
         - Chat: The player wants to chat with you, and you need to generate the dialog as a villager based on the user's input
@@ -98,7 +98,9 @@ class LLM_Agent:
             max_tokens=300,
             temperature=0.3,
         )
+        print(response.choices[0].message.content)
         list_actions = json.loads(response.choices[0].message.content)["CoT"]
+        print(list_actions)
         inner_thinking = list_actions[:(len(list_actions) - 1)]
         pprint(list_actions)
         content = list_actions[len(list_actions) - 1]
@@ -272,11 +274,11 @@ class LLM_Agent:
         # TODO: add memory mechanism
         return self.memory
     
-    def generate_dialog(self, user_input, prompt, memory):
+    def generate_dialog(self, user_input, memory):
         '''
         Generate the dialog as a villager based on the user's input
         '''
-        return ""
+        return "not yet implemented"
 
     def check_items_in_container(self, container):
         '''
@@ -308,12 +310,17 @@ class LLM_Agent:
         content = self.initial_process(user_input)
         if content["status"] == "Action":
             commands = content["content"]
-            self.make_action(commands)
+            action = self.make_action(commands)
+            if action:
+                return "action success"
+            else:
+                return "action failed"
+
         elif content["status"] == "Query":
-            memory_needed = content["memory"]
+            memory_needed = content["content"]["memory"]
             memory = "No memory needed"
             if memory_needed:
-                memory = self.get_memory(user_input, content["memory_query"])
+                memory = self.get_memory(user_input, content["content"]["memory_query"])
             return self.generate_dialog(user_input, memory)
         elif content["status"] == "Talk":
             return "not yet implemented"

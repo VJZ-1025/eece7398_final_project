@@ -7,6 +7,11 @@
           <div class="message-text">{{ message.content }}</div>
         </div>
       </div>
+      <div v-if="isLoading" class="message assistant">
+        <div class="message-content">
+          <div class="loading-circle"></div>
+        </div>
+      </div>
     </div>
     <div class="input-container">
       <textarea 
@@ -16,7 +21,7 @@
         rows="1"
         class="input-field"
       ></textarea>
-      <button @click="sendMessage" class="send-button">Send</button>
+      <button @click="sendMessage" class="send-button" :disabled="isLoading">Send</button>
     </div>
   </div>
 </template>
@@ -30,6 +35,7 @@ export default {
     return {
       messages: [],
       userInput: '',
+      isLoading: false
     }
   },
   methods: {
@@ -44,10 +50,11 @@ export default {
 
       const userMessage = this.userInput
       this.userInput = ''
+      this.isLoading = true
 
       try {
         // Send request to backend
-        const response = await axios.post('/api/chat', {
+        const response = await axios.post('http://localhost:8000/chat', {
           user_input: userMessage
         })
 
@@ -62,6 +69,8 @@ export default {
           role: 'assistant',
           content: 'Sorry, there was an error processing your command.'
         })
+      } finally {
+        this.isLoading = false
       }
 
       // Scroll to bottom after message is added
@@ -139,5 +148,25 @@ export default {
 
 .send-button:hover {
   background-color: #15a76c;
+}
+
+.send-button:disabled {
+  background-color: #666;
+  cursor: not-allowed;
+}
+
+.loading-circle {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #565869;
+  border-top: 3px solid #19c37d;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style> 

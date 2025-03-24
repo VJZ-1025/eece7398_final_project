@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --upgrade pip
 COPY ./textworld_map /app/textworld_map
 COPY ./requirements.txt /app/requirements.txt
+COPY .env /app/.env
 
 WORKDIR /app
 RUN pip install -r requirements.txt

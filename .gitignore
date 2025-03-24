@@ -1,3 +1,4 @@
 .env
 esdata/
 __pycache__/
+web/node_modules/

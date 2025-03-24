@@ -2,14 +2,12 @@
 FROM node:18-alpine
 
 COPY ./web /app
+
 # Set working directory
 WORKDIR /app
 
 # Install dependencies
 RUN npm install
-
-# Build the Vue application
-RUN npm run build
 
 # Expose port 80
 EXPOSE 80

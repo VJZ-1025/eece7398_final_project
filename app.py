@@ -19,11 +19,9 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-def read_root():
-    return {"message": "Hello World"}
 
 @app.post("/chat")
-def chat(user_input: str):
-    chat_result = agent.main_process(user_input)
+def chat(user_input: dict):
+    chat_result = agent.main_process(user_input["user_input"])
+    print(chat_result)
     return {"message": chat_result}
