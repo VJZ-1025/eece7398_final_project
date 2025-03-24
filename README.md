@@ -8,9 +8,11 @@
 # Docker deployment
 Install Docker Desktop first
 
-Run `docker compose up --build -d` for building whole service (not yet developed)
+Run `docker compose up --build -d` for building whole service 
 
-Run `docker compose up --build -d es` for starting Elasticsearch, for development
+`docker logs -f llm_play` for monitor logs
+
+Note: both front and back monitoring code change, no re-launch needed
 
 Current basic idea:
 
