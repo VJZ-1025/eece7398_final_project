@@ -6,22 +6,59 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 from pprint import pprint
+from sentence_transformers import SentenceTransformer
 from elasticsearch import Elasticsearch
+
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-ES_HOST = "http://localhost:9200"
+ES_HOST = os.getenv("ES_HOST")
 # TODO: This while loop should be modified to use an LLM agent instead of human input
 # The game contains NPCs (non-player characters) like:
 # - Sheriff (indicated by type 'c' in textWorldMap.py)
 # These containers/NPCs can hold items and interact with the player
 # 
 
+def create_embedding(text):
+    model = SentenceTransformer('BAAI/bge-base-en-v1.5')
+    return model.encode(text, show_progress_bar=False)
+
+def create_memory_index(es: Elasticsearch):
+    index_name = "memory"
+
+    mapping = {
+        "mappings": {
+            "properties": {
+                "npc": {"type": "keyword"},
+                "summary": {"type": "text"},
+                "raw_input": {"type": "text"},
+                "memory_query": {"type": "text"},
+                "location": {"type": "keyword"},
+                "inventory": {"type": "keyword"},
+                "tags": {"type": "keyword"},
+                "timestamp": {"type": "date"},
+                "embedding": {
+                    "type": "dense_vector",
+                    "dims": 384,
+                    "index": True,
+                    "similarity": "cosine"
+                }
+            }
+        }
+    }
+
+    if not es.indices.exists(index=index_name):
+        es.indices.create(index=index_name, body=mapping)
+        print(f"Index '{index_name}' created.")
+    else:
+        print(f"Index '{index_name}' already exists.")
 
 class LLM_Agent:
     def __init__(self):
         self.game_file = "./textworld_map/village_game.z8"
+        self.es = Elasticsearch(ES_HOST)
+        create_memory_index(self.es)
         self.action_client = OpenAI(api_key=OPENAI_API_KEY)
         self.main_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
         self.infos = EnvInfos(admissible_commands=True, facts=True, inventory=True)
