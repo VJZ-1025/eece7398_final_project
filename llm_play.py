@@ -58,6 +58,9 @@ def create_memory_index(es: Elasticsearch):
         es.indices.create(index=index_name, body=mapping)
         print(f"Index '{index_name}' created.")
 
+def clean_json_prefix(json_str):
+    return json_str.replace("```json", "").replace("```", "")
+
 class LLM_Agent:
     def __init__(self):
         self.game_file = "./textworld_map/village_game.z8"
@@ -131,7 +134,10 @@ class LLM_Agent:
                 {{"action": "Instruction Summarization", "status": "Action|Query|Talk|Other", "content": "..."}}
             ]
         }}
-        ***Do NOT include any extra text outside of the JSON format, DO NOT USE MARKDOWN, pleasde only return the JSON format, do NOT modify the action and title, DO NOT modify the number of CoT***
+        Your output must be **pure JSON only**. 
+        You MUST NOT include markdown syntax like ```json or ``` at the beginning or end of the response.
+        Only return raw JSON. Do NOT wrap or format the output in any way.
+        ***Do NOT include any extra text outside of the JSON format, DO NOT USE MARKDOWN(```json) DO! NOT! USE! MARKDOWN!, please only return the string of JSON format, DO NOT use ```json, DO NOT modify the action and title, DO NOT modify the number of CoT***
         </output format>
         """
         response = self.main_client.chat.completions.create(
@@ -142,7 +148,7 @@ class LLM_Agent:
             temperature=0.3,
         )
         print(response.choices[0].message.content)
-        list_actions = json.loads(response.choices[0].message.content)["CoT"]
+        list_actions = json.loads(clean_json_prefix(response.choices[0].message.content))["CoT"]
         print(list_actions)
         inner_thinking = list_actions[:(len(list_actions) - 1)]
         pprint(list_actions)

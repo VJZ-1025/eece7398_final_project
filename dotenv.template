@@ -1,6 +1,6 @@
 OPENAI_API_KEY="INTPUT_YOUR_API_KEY"
 DEEPSEEK_API_KEY="INTPUT_YOUR_API_KEY"
-ES_HOST=http://localhost:9200
+ES_HOST=http://es:9200
 
 ###
 #change "INTPUT_YOUR_API_KEY" to your api key and in command line, insert `cp dotenv.template .env`
