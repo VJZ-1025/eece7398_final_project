@@ -53,6 +53,10 @@ def create_memory_index(es: Elasticsearch):
         print(f"Index '{index_name}' created.")
     else:
         print(f"Index '{index_name}' already exists.")
+        #delete the index and try again
+        es.indices.delete(index=index_name)
+        es.indices.create(index=index_name, body=mapping)
+        print(f"Index '{index_name}' created.")
 
 class LLM_Agent:
     def __init__(self):
@@ -127,6 +131,8 @@ class LLM_Agent:
                 {{"action": "Instruction Summarization", "status": "Action|Query|Talk|Other", "content": "..."}}
             ]
         }}
+        ***Do NOT include any extra text outside of the JSON format, DO NOT USE MARKDOWN, pleasde only return the JSON format, do NOT modify the action and title, DO NOT modify the number of CoT***
+        </output format>
         """
         response = self.main_client.chat.completions.create(
             model="deepseek-chat",

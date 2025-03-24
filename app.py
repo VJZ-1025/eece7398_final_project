@@ -22,6 +22,7 @@ app.add_middleware(
 
 @app.post("/chat")
 def chat(user_input: dict):
+    print(user_input)
     chat_result = agent.main_process(user_input["user_input"])
     print(chat_result)
     return {"message": chat_result}

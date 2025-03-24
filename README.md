@@ -1,18 +1,20 @@
 # eece7398_final_project
 
-# Before start
-1. `pip install -r requirements.txt` for install dependencies
-2. modify `dotenv.template` to set API key, and command: `cp dotenv.template .env` create ENV file
-3. llm_play.py is ready
-
 # Docker deployment
 Install Docker Desktop first
+
+Modify `dotenv.template` to set API key, and command: `cp dotenv.template .env` 
 
 Run `docker compose up --build -d` for building whole service 
 
 `docker logs -f llm_play` for monitor logs
 
 Note: both front and back monitoring code change, no re-launch needed
+
+# Running on local (LLM_play only)
+1. `pip install -r requirements.txt` for install dependencies
+create ENV file
+2. llm_play.py is ready
 
 Current basic idea:
 
