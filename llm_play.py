@@ -20,43 +20,51 @@ ES_HOST = os.getenv("ES_HOST")
 # These containers/NPCs can hold items and interact with the player
 # 
 
-def create_embedding(text):
-    model = SentenceTransformer('BAAI/bge-base-en-v1.5')
-    return model.encode(text, show_progress_bar=False)
-
-def create_memory_index(es: Elasticsearch):
-    index_name = "memory"
-
-    mapping = {
-        "mappings": {
-            "properties": {
-                "npc": {"type": "keyword"},
-                "summary": {"type": "text"},
-                "raw_input": {"type": "text"},
-                "memory_query": {"type": "text"},
-                "location": {"type": "keyword"},
-                "inventory": {"type": "keyword"},
-                "tags": {"type": "keyword"},
-                "timestamp": {"type": "date"},
-                "embedding": {
-                    "type": "dense_vector",
-                    "dims": 384,
-                    "index": True,
-                    "similarity": "cosine"
+class ElasticsearchMemory:
+    def __init__(self, es: Elasticsearch):
+        self.es = es
+        self.index_name = "memory"
+        self.mapping = {
+            "mappings": {
+                "properties": {
+                    "npc": {"type": "keyword"},
+                    "type": {"type": "keyword"},
+                    "summary": {"type": "text"},
+                    "raw_input": {"type": "text"}, 
+                    "memory_query": {"type": "text"},
+                    "location": {"type": "keyword"},
+                    "inventory": {"type": "keyword"},
+                    "timestamp": {"type": "date"},
+                    "embedding": {
+                        "type": "dense_vector",
+                        "dims": 384,
+                        "index": True,
+                        "similarity": "cosine"
+                    }
                 }
             }
         }
-    }
+        self._initialize_index()
+        self.model = SentenceTransformer('BAAI/bge-base-en-v1.5')
 
-    if not es.indices.exists(index=index_name):
-        es.indices.create(index=index_name, body=mapping)
-        print(f"Index '{index_name}' created.")
-    else:
-        print(f"Index '{index_name}' already exists.")
-        #delete the index and try again
-        es.indices.delete(index=index_name)
-        es.indices.create(index=index_name, body=mapping)
-        print(f"Index '{index_name}' created.")
+    def _initialize_index(self):
+        if self.es.indices.exists(index=self.index_name):
+            self.es.indices.delete(index=self.index_name)
+            print(f"Existing index '{self.index_name}' deleted.")
+        
+        self.es.indices.create(index=self.index_name, body=self.mapping)
+        print(f"Index '{self.index_name}' created.")
+
+    def create_embedding(self, text):
+        return self.model.encode(text, show_progress_bar=False)
+    
+    def search(self, query_template):
+        return self.es.search(index=self.index_name, body=query_template)
+
+
+
+
+
 
 def clean_json_prefix(json_str):
     return json_str.replace("```json", "").replace("```", "")
@@ -65,7 +73,7 @@ class LLM_Agent:
     def __init__(self):
         self.game_file = "./textworld_map/village_game.z8"
         self.es = Elasticsearch(ES_HOST)
-        create_memory_index(self.es)
+        self.elasticsearch_memory = ElasticsearchMemory(self.es)
         self.action_client = OpenAI(api_key=OPENAI_API_KEY)
         self.main_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
         self.infos = EnvInfos(admissible_commands=True, facts=True, inventory=True)
@@ -104,6 +112,7 @@ class LLM_Agent:
         - Action: the content should be a short description of the action the player wants to take
             - content format: "<a short description of the action>"
         - Query: the content should determin the question the player wants to ask, and decide if need extra memory to answer the question, format should be json
+            - for memory, if you can answer the question based on the current information you have, you should set memory to false, else you should set memory to true
             - content format: {{"question": "<a short description of the question>", "memory": true|false, "memory_query": "<a short description of the memory query>"}}
         - Talk: the content should generate the dialog as a villager based on the user's input, format should be json
             - content format: {{"npc": "villager|Sheriff|Drunker|Vendor","dialog": "<a short description of the dialog>"}}
@@ -321,7 +330,134 @@ class LLM_Agent:
         Memory query: The query that LLM generates
         '''
         # TODO: add memory mechanism
-        return self.memory
+        prompt = f"""
+        <question>
+        You are a Elasticsearch memory LLM, you need build a qurey and word need embeded to get the memory from Elasticsearch, the query should be based on the original sentence and the memory query, and the word need embeded.
+        </question>
+
+        <elasticsearch_index_structure>
+         {{
+            "mappings": {{
+                "properties": {{
+                    "npc": {{"type": "keyword"}},
+                    "type": {{"type": "keyword"}},
+                    "summary": {{"type": "text"}},
+                    "raw_input": {{"type": "text"}},
+                    "memory_query": {{"type": "text"}},
+                    "location": {{"type": "keyword"}},
+                    "inventory": {{"type": "keyword"}},
+                    "timestamp": {{"type": "date"}},
+                    "embedding": {{
+                        "type": "dense_vector",
+                        "dims": 384,
+                        "index": True,
+                        "similarity": "cosine"
+                    }}
+                }}
+            }}
+        }}
+        </elasticsearch_index_structure>
+
+        <response requirements>
+        Your response must follow a structured reasoning process with two distinct action types: **"Inner Thinking"**, **"Verifiy Thinking"**, and **"Instruction Summarization"**.
+        - Inner Thinking: Reconstruct the reasoning process step by step. Each step should have a brief title for clarity.
+        - Verifiy Thinking: If a mistake is found, correct it by backtracking.
+        - Instruction Summarization: Summarize key takeaways from the new reasoning process and provide actionable instructions.
+        - Output should strictly be a JSON list of step-by-step commands.
+        - Example format:
+            {{
+                "CoT": [
+                    {{"action": "Inner Thinking", "title": "determine the user_input and memory_query and reasoning what qurey to search in Elasticsearch", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "determine the query to search in Elasticsearch", "content": "..."}},
+                    {{"action": "Verifiy Thinking", "title": "verify the query", "content": "..."}},
+                    {{"action": "Instruction Summarization", "content": "{{
+                        "query": {{
+                            "npc": {{
+                                need_get: true|false,
+                                npc_name: "..."
+                            }},
+                            "type": {{
+                                need_get: true|false,
+                                type_query: "..."
+                            }},
+                            "summary": {{
+                                need_get: true|false,
+                                summary_query: "..."
+                            }},
+                            "location": {{
+                                need_get: true|false,
+                                location_query: "..."
+                            }},
+                            "inventory": {{
+                                need_get: true|false,
+                                inventory_query: "..."
+                            }}
+                        }}
+                        "word_need_embed": "..."
+                    }}"}}
+                ]
+            }}
+        - Explaination:
+            - if the need_get is true, you must five a query to search in Elasticsearch, the query is the key word that you think is most relevant to the original sentence and the memory query
+        </response requirements>
+        """
+
+        user_input = f"""
+        Original sentence: {oringinal_sentence}
+        Memory query: {memory_query}
+        """
+        response = self.main_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "system", "content": prompt},
+                      {"role": "user", "content": user_input}],
+            temperature=0.3
+        )
+        response_json = json.loads(clean_json_prefix(response.choices[0].message.content))
+        embedding_word = response_json["CoT"][-1]["content"]["word_need_embed"]
+        embedding_vector = self.elasticsearch_memory.create_embedding(embedding_word)
+        qurey_template = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "script_score": {
+                                "query": {"match_all": {}},
+                                "script": {
+                                    "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                                    "params": {"query_vector": embedding_vector.tolist()}
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "size": 10,
+            "sort": [
+                {
+                    "timestamp": {"order": "desc"}
+                }
+            ]
+        }
+        print(response_json)
+        query_content = response_json["CoT"][-1]["content"]["query"]
+        query_fields = ["npc", "type", "summary", "location", "inventory"]
+        
+        for field in query_fields:
+            if query_content[field]["need_get"]:
+                qurey_template["query"]["bool"]["must"].append({
+                    "match": {
+                        field: query_content[field][f"{field}_query" if field != "npc" else "npc_name"]
+                    }
+                })
+        
+        search_result = self.elasticsearch_memory.search(qurey_template)
+        print(search_result)
+
+
+
+
+        
+        return response_json
     
     def generate_dialog(self, user_input, memory):
         '''
