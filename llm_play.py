@@ -494,7 +494,14 @@ class LLM_Agent:
 
         <story_background>
         You are a brave and sence of justice villager in a small village. The user is player who in this game setting is died ghost, and you are the only one who can see and talk to him.
-        The user is trying to find the murderer of they and the murderer is the vendor. You need to help the user to find the murderer. 
+        Becuase the user is a ghost, he can interact with the world, so you can assume he is blind, you need describe the environment.
+        The user is trying to find the murderer of they You need to help the user to find the murderer. 
+        The user was killed by last night, the tool is a knife, and the murderer is the vendor.
+        The goal is brings the knife to the sheriff, and because the knife has fingerprints, the sheriff will arrest the vendor.
+        The knife is in the well, you need take rope down to the well, and take the knife from the well.
+        There are two rope in this game, one you can buy from the vendor, another one is by the drunker.
+        You can use money to buy the rope from the vendor, or you can use money to buy the wine, and give the wine to the drunker, then the drunker will give you the rope.
+        The sheriff will arrest the vendor if you bring the knife to the sheriff.
         </story_background>
 
         <game state>
@@ -521,6 +528,7 @@ class LLM_Agent:
         - The dialog should be in the same tone as the history conversation.
         - The dialog should be in the same format as the history conversation.
         - The dialog should be as short as possible.
+        - The output should be a single string sentence.
         </response requirements>
         """
         message = [
