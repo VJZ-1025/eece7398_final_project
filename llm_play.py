@@ -13,51 +13,59 @@ from elasticsearch import Elasticsearch
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-#ES_HOST = os.getenv("ES_HOST")
-ES_HOST = "http://es:9200"
+ES_HOST = os.getenv("ES_HOST")
 # TODO: This while loop should be modified to use an LLM agent instead of human input
 # The game contains NPCs (non-player characters) like:
 # - Sheriff (indicated by type 'c' in textWorldMap.py)
 # These containers/NPCs can hold items and interact with the player
 # 
 
-def create_embedding(text):
-    model = SentenceTransformer('BAAI/bge-base-en-v1.5')
-    return model.encode(text, show_progress_bar=False)
-
-def create_memory_index(es: Elasticsearch):
-    index_name = "memory"
-
-    mapping = {
-        "mappings": {
-            "properties": {
-                "npc": {"type": "keyword"},
-                "summary": {"type": "text"},
-                "raw_input": {"type": "text"},
-                "memory_query": {"type": "text"},
-                "location": {"type": "keyword"},
-                "inventory": {"type": "keyword"},
-                "tags": {"type": "keyword"},
-                "timestamp": {"type": "date"},
-                "embedding": {
-                    "type": "dense_vector",
-                    "dims": 384,
-                    "index": True,
-                    "similarity": "cosine"
+class ElasticsearchMemory:
+    def __init__(self, es: Elasticsearch):
+        self.es = es
+        logger.info(f"Connected to Elasticsearch cluster: {es.info()}")
+        self.index_name = "memory"
+        self.mapping = {
+            "mappings": {
+                "properties": {
+                    "npc": {"type": "keyword"},
+                    "type": {"type": "keyword"},
+                    "summary": {"type": "text"},
+                    "raw_input": {"type": "text"}, 
+                    "memory_query": {"type": "text"},
+                    "location": {"type": "keyword"},
+                    "inventory": {"type": "keyword"},
+                    "timestamp": {"type": "date"},
+                    "embedding": {
+                        "type": "dense_vector",
+                        "dims": 384,
+                        "index": True,
+                        "similarity": "cosine"
+                    }
                 }
             }
         }
-    }
+        self._initialize_index()
+        self.model = SentenceTransformer('BAAI/bge-base-en-v1.5')
 
-    if not es.indices.exists(index=index_name):
-        es.indices.create(index=index_name, body=mapping)
-        print(f"Index '{index_name}' created.")
-    else:
-        print(f"Index '{index_name}' already exists.")
-        #delete the index and try again
-        es.indices.delete(index=index_name)
-        es.indices.create(index=index_name, body=mapping)
-        print(f"Index '{index_name}' created.")
+    def _initialize_index(self):
+        if self.es.indices.exists(index=self.index_name):
+            self.es.indices.delete(index=self.index_name)
+            logger.info(f"Existing index '{self.index_name}' deleted.")
+        
+        self.es.indices.create(index=self.index_name, body=self.mapping)
+        logger.info(f"Index '{self.index_name}' created.")
+
+    def create_embedding(self, text):
+        return self.model.encode(text, show_progress_bar=False)
+    
+    def search(self, query_template):
+        return self.es.search(index=self.index_name, body=query_template)
+
+
+
+
+
 
 def clean_json_prefix(json_str):
     return json_str.replace("```json", "").replace("```", "")
@@ -66,7 +74,7 @@ class LLM_Agent:
     def __init__(self):
         self.game_file = "./textworld_map/village_game.z8"
         self.es = Elasticsearch(ES_HOST)
-        create_memory_index(self.es)
+        self.elasticsearch_memory = ElasticsearchMemory(self.es)
         self.action_client = OpenAI(api_key=OPENAI_API_KEY)
         self.main_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
         self.infos = EnvInfos(admissible_commands=True, facts=True, inventory=True)
@@ -74,7 +82,14 @@ class LLM_Agent:
         self.env = gym.make(self.env_id)
         self.obs, self.infos = self.env.reset()
         self.done = False
-        self.memory = []
+        self.dialog_history = {
+            "main_character": [],
+            "villager": [],
+            "vendor": [],
+            "drunker": [],
+            "sheriff": []
+            
+        }
     def reset_game(self):
         self.obs, self.infos = self.env.reset()
         self.done = False
@@ -83,7 +98,7 @@ class LLM_Agent:
         """
         Main LLM for user communication
         """
-        print("Initial process...")
+        logger.info("Initial process...")
         prompt = f"""
         <Background>
         You are the main dialogue LLM communicating with the player. You need act as a villager who is assisting the player.
@@ -105,6 +120,7 @@ class LLM_Agent:
         - Action: the content should be a short description of the action the player wants to take
             - content format: "<a short description of the action>"
         - Query: the content should determin the question the player wants to ask, and decide if need extra memory to answer the question, format should be json
+            - for memory, if you can answer the question based on the current information you have, you should set memory to false, else you should set memory to true
             - content format: {{"question": "<a short description of the question>", "memory": true|false, "memory_query": "<a short description of the memory query>"}}
         - Talk: the content should generate the dialog as a villager based on the user's input, format should be json
             - content format: {{"npc": "villager|Sheriff|Drunker|Vendor","dialog": "<a short description of the dialog>"}}
@@ -148,16 +164,16 @@ class LLM_Agent:
             max_tokens=300,
             temperature=0.3,
         )
-        print(response.choices[0].message.content)
+        logger.info(response.choices[0].message.content)
         list_actions = json.loads(clean_json_prefix(response.choices[0].message.content))["CoT"]
-        print(list_actions)
+        logger.info(list_actions)
         inner_thinking = list_actions[:(len(list_actions) - 1)]
         pprint(list_actions)
         content = list_actions[len(list_actions) - 1]
         return content
     
     def make_action(self, plain_text_explanation):
-        print("Action thinking...")
+        logger.info("Action thinking...")
         
         prompt_template = f"""
             <question>
@@ -293,24 +309,24 @@ class LLM_Agent:
             messages=[{"role": "system", "content": prompt_template},
                     {"role": "user", "content": f"Here is the command explanation: {plain_text_explanation}"}],
         )
-        print(response.choices[0].message.content)
+        logger.info(response.choices[0].message.content)
         jsonfy_response = json.loads(response.choices[0].message.content)
         status = jsonfy_response["CoT"][len(jsonfy_response["CoT"]) - 1]["status"]
         if status == "rejected":
-            print("enh enh, you can't do that")
+            logger.info("enh enh, you can't do that")
             self.obs, self.reward, self.done, self.infos = self.env.step("")
             return False
         list_of_commands = jsonfy_response["CoT"][len(jsonfy_response["CoT"]) - 1]["content"]
         if list_of_commands == ["reject command"]:
-            print("nah nah, you can't do that")
+            logger.info("nah nah, you can't do that")
             self.obs, self.reward, self.done, self.infos = self.env.step("")
             return False
         for command in list_of_commands:
             # print(f"\nExecuting command: {command}")
             self.obs, self.reward, self.done, self.infos = self.env.step(command)
-            print(self.obs)
+            logger.info(self.obs)
             if self.done:
-                print("Game Over!")
+                logger.info("Game Over!")
                 return True
         return True
 
@@ -322,13 +338,200 @@ class LLM_Agent:
         Memory query: The query that LLM generates
         '''
         # TODO: add memory mechanism
-        return self.memory
+        prompt = f"""
+        <question>
+        You are a Elasticsearch memory LLM, you need build a qurey and word need embeded to get the memory from Elasticsearch, the query should be based on the original sentence and the memory query, and the word need embeded.
+        </question>
+
+        <elasticsearch_index_structure>
+         {{
+            "mappings": {{
+                "properties": {{
+                    "npc": {{"type": "keyword"}},
+                    "type": {{"type": "keyword"}},
+                    "summary": {{"type": "text"}},
+                    "raw_input": {{"type": "text"}},
+                    "memory_query": {{"type": "text"}},
+                    "location": {{"type": "keyword"}},
+                    "inventory": {{"type": "keyword"}},
+                    "timestamp": {{"type": "date"}},
+                    "embedding": {{
+                        "type": "dense_vector",
+                        "dims": 384,
+                        "index": True,
+                        "similarity": "cosine"
+                    }}
+                }}
+            }}
+        }}
+        </elasticsearch_index_structure>
+
+        <response requirements>
+        Your response must follow a structured reasoning process with two distinct action types: **"Inner Thinking"**, **"Verifiy Thinking"**, and **"Instruction Summarization"**.
+        - Inner Thinking: Reconstruct the reasoning process step by step. Each step should have a brief title for clarity.
+        - Verifiy Thinking: If a mistake is found, correct it by backtracking.
+        - Instruction Summarization: Summarize key takeaways from the new reasoning process and provide actionable instructions.
+        - Output should strictly be a JSON list of step-by-step commands.
+        - Example format:
+            {{
+                "CoT": [
+                    {{"action": "Inner Thinking", "title": "determine the user_input and memory_query and reasoning what qurey to search in Elasticsearch", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "determine the query to search in Elasticsearch", "content": "..."}},
+                    {{"action": "Verifiy Thinking", "title": "verify the query", "content": "..."}},
+                    {{"action": "Instruction Summarization", "content": "{{
+                        "query": {{
+                            "npc": {{
+                                need_get: true|false,
+                                npc_name: "..."
+                            }},
+                            "type": {{
+                                need_get: true|false,
+                                type_query: "..."
+                            }},
+                            "summary": {{
+                                need_get: true|false,
+                                summary_query: "..."
+                            }},
+                            "location": {{
+                                need_get: true|false,
+                                location_query: "..."
+                            }},
+                            "inventory": {{
+                                need_get: true|false,
+                                inventory_query: "..."
+                            }}
+                        }}
+                        "word_need_embed": "..."
+                    }}"}}
+                ]
+            }}
+        - Explaination:
+            - if the need_get is true, you must have a query to search in Elasticsearch, the query is the key word that you think is most relevant to the original sentence and the memory query
+        </response requirements>
+        """
+
+        user_input = f"""
+        Original sentence: {oringinal_sentence}
+        Memory query: {memory_query}
+        """
+        response = self.main_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "system", "content": prompt},
+                      {"role": "user", "content": user_input}],
+            temperature=0.3
+        )
+        response_json = json.loads(clean_json_prefix(response.choices[0].message.content))
+        embedding_word = response_json["CoT"][-1]["content"]["word_need_embed"]
+        embedding_vector = self.elasticsearch_memory.create_embedding(embedding_word)
+        qurey_template = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "script_score": {
+                                "query": {"match_all": {}},
+                                "script": {
+                                    "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                                    "params": {"query_vector": embedding_vector.tolist()}
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "size": 10,
+            "sort": [
+                {
+                    "timestamp": {"order": "desc"}
+                }
+            ]
+        }
+        logger.info(response_json)
+        query_content = response_json["CoT"][-1]["content"]["query"]
+        query_fields = ["npc", "type", "summary", "location", "inventory"]
+        
+        for field in query_fields:
+            if query_content[field]["need_get"]:
+                qurey_template["query"]["bool"]["must"].append({
+                    "match": {
+                        field: query_content[field][f"{field}_query" if field != "npc" else "npc_name"]
+                    }
+                })
+        
+        search_result = self.elasticsearch_memory.search(qurey_template)
+        if search_result["hits"]["hits"]:
+            return search_result["hits"]["hits"][0]["_source"]["summary"]
+        else:
+            return "No memory found"
     
     def generate_dialog(self, user_input, memory):
         '''
         Generate the dialog as a villager based on the user's input
         '''
-        return "not yet implemented"
+
+        prompt = f"""
+        <question>
+        You are the main character in the game, you task is to generate a dialog based on the history conversation and the user's input and the memory.
+        Read the story background and the game state carefully, and generate the dialog based on the history conversation and the user's input and the memory.
+        The story background already provide who is the murderer, but you need to pretend you don't know and help the user to find the murderer.
+        You don't need to make decision because You are one component of a larger system working together to assist the user, the previous LLM has already made the decision.
+        You should follow the instructions strictly and generate the dialog based on the history conversation and the user's input and the memory.
+        </question>
+
+        <story_background>
+        You are a brave and sence of justice villager in a small village. The user is player who in this game setting is died ghost, and you are the only one who can see and talk to him.
+        Becuase the user is a ghost, he can interact with the world, so you can assume he is blind, you need describe the environment.
+        The user is trying to find the murderer of they You need to help the user to find the murderer. 
+        The user was killed by last night, the tool is a knife, and the murderer is the vendor.
+        The goal is brings the knife to the sheriff, and because the knife has fingerprints, the sheriff will arrest the vendor.
+        The knife is in the well, you need take rope down to the well, and take the knife from the well.
+        There are two rope in this game, one you can buy from the vendor, another one is by the drunker.
+        You can use money to buy the rope from the vendor, or you can use money to buy the wine, and give the wine to the drunker, then the drunker will give you the rope.
+        The sheriff will arrest the vendor if you bring the knife to the sheriff.
+        </story_background>
+
+        <game state>
+        {self.obs}
+        </game state>
+
+        <instructions>
+        Below, you will receive a list of messages including:
+            - previous user inputs,
+            - your previous responses,
+            - and finally, the current user message.
+        Use the full history to infer the user's intent and respond appropriately based on both past memory and current game state.
+        One of the previous LLM recieved the user's input to determine if need external memory, here is the result:
+        memory: {memory}
+        Use the memory to generate the dialog. 
+        - if the memory shows 'No memory needed', you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
+        - if the memory shows 'No memory found', its means the thing that user asked is not in memory, you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
+        </instructions>
+
+        <response requirements>
+        - Your response should be a dialog based on the history conversation and the user's input and the memory.
+        - The dialog should be in the same language as the user's input.
+        - The dialog should be in the same style as the history conversation.
+        - The dialog should be in the same tone as the history conversation.
+        - The dialog should be in the same format as the history conversation.
+        - The dialog should be as short as possible.
+        - The output should be a single string sentence.
+        </response requirements>
+        """
+        message = [
+            {"role": "system", "content": prompt}
+        ]
+        if len(self.dialog_history["main_character"]) > 0:
+            for i in range(len(self.dialog_history["main_character"])):
+                message.append({"role": "user", "content": self.dialog_history["main_character"][i]["user"]})
+                message.append({"role": "assistant", "content": self.dialog_history["main_character"][i]["assistant"]})
+        message.append({"role": "user", "content": f"Here is the user's input: {user_input}"})
+        response = self.action_client.chat.completions.create(
+            model="o3-mini",
+            messages=message
+        )
+        logger.info(response.choices[0].message.content)
+        self.dialog_history["main_character"].append({"user": user_input, "assistant": response.choices[0].message.content})
+        return response.choices[0].message.content
 
     def check_items_in_container(self, container):
         '''
