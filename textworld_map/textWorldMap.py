@@ -88,6 +88,11 @@ def generate_village_map(output_file="./village_game.z8"):
     drunker.add(rope2)
     r33.add(drunker)
 
+    # 在 School 房间添加教师
+    teacher = gm.new('c', 'Teacher', "A wise and patient educator")
+    teacher.add_property('open')
+    r21.add(teacher)  # r21 是 School 位置
+
     gm.set_player(r31)
     # Build and save the game
 
