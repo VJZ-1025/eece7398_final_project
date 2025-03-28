@@ -102,7 +102,7 @@ class LLM_Agent:
         #NPC 位置
         self.npc_locations ={
             "teacher": "School",
-            "vendor"": "Shop",
+            "vendor": "Shop",
             "sheriff": "Sheriff's Office"
         }
         
