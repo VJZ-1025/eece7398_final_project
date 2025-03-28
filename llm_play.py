@@ -77,6 +77,13 @@ class LLM_Agent:
         self.elasticsearch_memory = ElasticsearchMemory(self.es)
         self.action_client = OpenAI(api_key=OPENAI_API_KEY)
         self.main_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+        
+        #add NPC
+        self.teacher_npc = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+        self.vender_npc = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+        self.sheriff_npc = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+        
+        
         self.infos = EnvInfos(admissible_commands=True, facts=True, inventory=True)
         self.env_id = textworld.gym.register_games([self.game_file], request_infos=self.infos, max_episode_steps=None)
         self.env = gym.make(self.env_id)
@@ -87,9 +94,27 @@ class LLM_Agent:
             "villager": [],
             "vendor": [],
             "drunker": [],
-            "sheriff": []
+            "sheriff": [],
+            "teacher": []
             
         }
+        
+        #NPC 位置
+        self.npc_locations ={
+            "teacher": "School",
+            "vendor"": "Shop",
+            "sheriff": "Sheriff's Office"
+        }
+        
+        # NPC 特性和知识
+        self.npc_traits = {
+            "Vendor": "A grumpy merchant selling goods for money. Suspicious of strangers.",
+            "Sheriff": "A stern law enforcement officer investigating a murder case.",
+            "Drunker": "An intoxicated character who might share secrets if given wine.",
+            "Villager": "A friendly local with gossip and knowledge about the village.",
+            "Teacher": "A wise and patient educator who knows much about the village history and its inhabitants. Can provide guidance to newcomers."
+        }
+        
     def reset_game(self):
         self.obs, self.infos = self.env.reset()
         self.done = False
@@ -99,6 +124,14 @@ class LLM_Agent:
         Main LLM for user communication
         """
         logger.info("Initial process...")
+        
+        # 获取当前位置
+        current_location = self.get_current_location()
+        
+        # 获取当前位置的 NPC
+        npcs_here = [npc for npc, location in self.npc_locations.items() if location == current_location]
+        npcs_info = "No NPCs present." if not npcs_here else f"NPCs present: {', '.join(npcs_here)}"
+        
         prompt = f"""
         <Background>
         You are the main dialogue LLM communicating with the player. You need act as a villager who is assisting the player.
@@ -123,7 +156,8 @@ class LLM_Agent:
             - for memory, if you can answer the question based on the current information you have, you should set memory to false, else you should set memory to true
             - content format: {{"question": "<a short description of the question>", "memory": true|false, "memory_query": "<a short description of the memory query>"}}
         - Talk: the content should generate the dialog as a villager based on the user's input, format should be json
-            - content format: {{"npc": "villager|Sheriff|Drunker|Vendor","dialog": "<a short description of the dialog>"}}
+             current location: {self.get_current_location()}
+            - content format: {{"npc": "Villager|Sheriff|Drunker|Vendor|Teacher","dialog": "<a short description of the dialog>"}}
         - Chat: The player wants to chat with you, and you need to generate the dialog as a villager based on the user's input
             - content formmat "<a short description of the dialog>"
         - Other: a reason why the player's intent is not clear, or the player's intent is not related to the game
@@ -133,6 +167,7 @@ class LLM_Agent:
         <game status>
         current location: {self.get_current_location()}
         inventory: {self.get_current_inventory()}
+        {npcs_info}
         </game status>
 
         <response requirements>
@@ -157,6 +192,8 @@ class LLM_Agent:
         ***Do NOT include any extra text outside of the JSON format, DO NOT USE MARKDOWN(```json) DO! NOT! USE! MARKDOWN!, please only return the string of JSON format, DO NOT use ```json, DO NOT modify the action and title, DO NOT modify the number of CoT***
         </output format>
         """
+        
+        # 剩余部分保持不变
         response = self.main_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "system", "content": prompt},
@@ -556,6 +593,84 @@ class LLM_Agent:
     def get_current_location(self):
         return self.obs.split("-= ")[1].split(" =-")[0] if "-= " in self.obs and " =-" in self.obs else ""
     
+    def interact_with_teacher(self, user_input):
+        """
+        与教师 NPC 交互
+        """
+        current_location = self.get_current_location()
+        
+        # 检查用户是否在正确的位置
+        if current_location != "School":
+            return "The Teacher is not here. You need to go to the School to talk to the Teacher."
+        
+        logger.info("Interacting with Teacher NPC...")
+        
+        # 构建教师角色的提示
+        prompt = f"""
+        <npc_character>
+        You are the Teacher in the village school. You are a wise and patient educator who knows much about the village history and its inhabitants. 
+        You are helpful to students and visitors, and can provide guidance about the village and its mysteries.
+        
+        Character traits:
+        - Knowledgeable about village history and residents
+        - Patient and willing to explain things
+        - Observant and notices unusual events in the village
+        - Cares about the well-being of villagers
+        - Maintains a formal but friendly tone
+        - Suspicious of the recent murder but tries not to spread rumors
+        
+        Special knowledge:
+        - You've heard rumors about strange activities at the well at night
+        - You know most of the villagers, including their habits and backgrounds
+        - You are aware that the vendor sometimes acts suspiciously
+        - You've seen someone near the forest at night recently
+        </npc_character>
+        
+        <game_state>
+        Current location: {current_location}
+        Player's inventory: {self.get_current_inventory()}
+        Game observation: {self.obs}
+        </game_state>
+        
+        <instructions>
+        Respond to the player as the Teacher would. Maintain your character's personality and knowledge.
+        Your responses should be helpful but not reveal too much at once about the murder mystery.
+        The player is a ghost trying to solve their own murder, but you don't need to explicitly mention this.
+        Keep your responses relatively brief and in the style of a village teacher.
+        </instructions>
+        
+        <player_question>
+        {user_input}
+        </player_question>
+        """
+        
+        # 获取对话历史
+        conversation_history = []
+        if self.dialog_history["teacher"]:
+            for i in range(min(5, len(self.dialog_history["teacher"]))):  # 最多包含最近5次对话
+                idx = len(self.dialog_history["teacher"]) - 1 - i
+                conversation_history.insert(0, {"role": "user", "content": self.dialog_history["teacher"][idx]["user"]})
+                conversation_history.insert(1, {"role": "assistant", "content": self.dialog_history["teacher"][idx]["assistant"]})
+        
+        messages = [{"role": "system", "content": prompt}]
+        messages.extend(conversation_history)
+        messages.append({"role": "user", "content": user_input})
+        
+        # 调用教师 NPC 的 LLM
+        response = self.teacher_npc.chat.completions.create(
+            model="deepseek-chat",
+            messages=messages,
+            temperature=0.7
+        )
+        
+        teacher_response = response.choices[0].message.content
+        logger.info(f"Teacher NPC response: {teacher_response}")
+        
+        # 保存对话历史
+        self.dialog_history["teacher"].append({"user": user_input, "assistant": teacher_response})
+        
+        return teacher_response
+
     def main_process(self, user_input):
         '''
         Main process of the agent
@@ -565,9 +680,15 @@ class LLM_Agent:
             commands = content["content"]
             action = self.make_action(commands)
             if action:
-                return "action success"
+                # 检查行动后是否有 NPC
+                current_location = self.get_current_location()
+                npcs_here = [npc for npc, location in self.npc_locations.items() if location == current_location]
+                
+                if npcs_here:
+                    return f"Action successful. You notice: {', '.join(npcs_here)} here."
+                return "Action successful."
             else:
-                return "action failed"
+                return "Action failed."
 
         elif content["status"] == "Query":
             memory_needed = content["content"]["memory"]
@@ -575,10 +696,29 @@ class LLM_Agent:
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
             return self.generate_dialog(user_input, memory)
+            
         elif content["status"] == "Talk":
-            return "not yet implemented"
+            # 与 NPC 交互
+            npc = content["content"]["npc"]
+            dialog = content["content"]["dialog"]
+            
+            # 根据 NPC 类型调用相应的交互方法
+            if npc.lower() == "teacher":
+                return self.interact_with_teacher(dialog)
+            elif npc.lower() == "vendor":
+                # 如果实现了与 vendor 的交互方法，可以调用
+                # return self.interact_with_vendor(dialog)
+                return f"Talking to {npc}: {dialog}"
+            elif npc.lower() == "sheriff":
+                # 如果实现了与 sheriff 的交互方法，可以调用  
+                # return self.interact_with_sheriff(dialog)
+                return f"Talking to {npc}: {dialog}"
+            else:
+                return f"Talking to {npc}: {dialog}"
+            
         elif content["status"] == "Chat":
             return self.generate_dialog(user_input, content["content"])
+            
         else:
             return "not yet implemented, please try again"
 
