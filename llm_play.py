@@ -13,7 +13,8 @@ from elasticsearch import Elasticsearch
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-ES_HOST = os.getenv("ES_HOST")
+#ES_HOST = os.getenv("ES_HOST")
+ES_HOST = "http://es:9200"
 # TODO: This while loop should be modified to use an LLM agent instead of human input
 # The game contains NPCs (non-player characters) like:
 # - Sheriff (indicated by type 'c' in textWorldMap.py)
@@ -376,7 +377,7 @@ class LLM_Agent:
         elif content["status"] == "Chat":
             return self.generate_dialog(user_input, content["content"])
         else:
-            return "not yet implemented"
+            return "not yet implemented, please try again"
 
 
 # obs, reward, done, infos = make_action(obs, infos, "take money, buy wine, give wine to drunker, take rope from Drunker, down to well")
