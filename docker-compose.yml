@@ -1,22 +1,6 @@
 name: llm_play
 version: '3.8'
 services:
-  llm_play:
-    image: llm_play
-    build:
-      context: .
-      dockerfile: llm.dockerfile
-    container_name: llm_play
-    working_dir: /app
-    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-    volumes:
-      - ./textworld_map:/app/textworld_map
-      - ./llm_play.py:/app/llm_play.py
-      - ./app.py:/app/app.py
-    ports:
-      - 8000:8000
-    networks:
-      - llm_play_network
   ui:
     image: ui
     build:
@@ -45,6 +29,24 @@ services:
       - ./esdata:/usr/share/elasticsearch/data
     networks:
       - llm_play_network
+  llm_play:
+    image: llm_play
+    build:
+      context: .
+      dockerfile: llm.dockerfile
+    container_name: llm_play
+    working_dir: /app
+    command: ./start.sh
+    volumes:
+      - ./textworld_map:/app/textworld_map
+      - ./llm_play.py:/app/llm_play.py
+      - ./app.py:/app/app.py
+    ports:
+      - 8000:8000
+    networks:
+      - llm_play_network
+    depends_on:
+      - es
 
 networks:
   llm_play_network:

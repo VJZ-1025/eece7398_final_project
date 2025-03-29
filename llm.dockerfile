@@ -18,9 +18,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip
-COPY ./textworld_map /app/textworld_map
+
 COPY ./requirements.txt /app/requirements.txt
+WORKDIR /app
+RUN pip install torch==2.2.0+cpu torchvision==0.17.0+cpu torchaudio==2.2.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip install -r requirements.txt
+COPY ./textworld_map /app/textworld_map
 COPY .env /app/.env
 
-WORKDIR /app
-RUN pip install -r requirements.txt
+COPY ./start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+
+
