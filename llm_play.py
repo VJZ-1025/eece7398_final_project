@@ -590,11 +590,11 @@ class LLM_Agent:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
             return self.generate_dialog(user_input, memory)
         elif content["status"] == "Talk":
-            return "not yet implemented"
+            return "not yet implemented, please try again later"
         elif content["status"] == "Chat":
             return self.generate_dialog(user_input, content["content"])
         else:
-            return "not yet implemented"
+            return "not yet implemented, please try again later"
 
 
 # obs, reward, done, infos = make_action(obs, infos, "take money, buy wine, give wine to drunker, take rope from Drunker, down to well")
