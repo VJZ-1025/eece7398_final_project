@@ -6,6 +6,7 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 from pprint import pprint
+from datetime import datetime
 from sentence_transformers import SentenceTransformer
 from elasticsearch import Elasticsearch
 
@@ -58,7 +59,7 @@ class ElasticsearchMemory:
             }
         }
         self._initialize_index()
-        self.model = SentenceTransformer('BAAI/bge-base-en-v1.5')
+        self.model = SentenceTransformer('BAAI/bge-small-en-v1.5')
 
     def _initialize_index(self):
         if self.es.indices.exists(index=self.index_name):
@@ -73,6 +74,9 @@ class ElasticsearchMemory:
     
     def search(self, query_template):
         return self.es.search(index=self.index_name, body=query_template)
+    
+    def insert(self, data):
+        return self.es.index(index=self.index_name, body=data)
 
 
 
@@ -541,6 +545,149 @@ class LLM_Agent:
         except Exception as e:
             logger.exception("Failed to get memory due to: %s", str(e))
             return "Memory retrieval failed"
+        
+    def create_memory(self, conversation):
+        '''
+        Create memory from the conversation
+        '''
+        prompt = f"""
+        <question>
+        You are a Elasticsearch memory LLM, you have two task:
+        main task is to create a memory query based on the conversation, and the memory query should be based on the conversation and the user's input.
+        second task is write a summary for your memory query to help program fetch the old memory from Elasticsearch, then we can use the new memory query to create a new memory.
+        </question>
+
+        <elasticsearch_index_structure>
+        {{
+            "mappings": {{
+                "properties": {{
+                    "character": {{"type": "keyword"}},
+                    "memory_type": {{"type": "keyword"}}, 
+                    "summary": {{"type": "text"}},
+                    "raw_input": {{"type": "text"}},
+                    "keywords": {{"type": "keyword"}},
+                    "timestamp": {{"type": "date"}},
+                    "embedding": {{
+                        "type": "dense_vector",
+                        "dims": 384,
+                        "index": True,
+                        "similarity": "cosine"
+                    }}
+                }}
+            }}
+        }}  
+        </elasticsearch_index_structure>
+
+        <structure_explanation>
+        - "character": Indicates which character the memory is related to. This can be the player or a non-player character (NPC), or even an ambiguous entity (such as "yourself" or "unknown"). It is used to filter memories from the perspective of the involved character.
+        - Type: keyword
+        - Source: Derived from the dialogue context, usually the subject or object of the action.
+        - Possible values: "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+        - Example: If the dialogue is "You gave the sword to the guard", then character = "sheriff"
+
+        - "memory_type": Specifies the category of the memory, used for organizing and filtering different types of memory.
+        - Type: keyword
+        - Source: Determined by the LLM based on the context and meaning of the interaction.
+        - Example values: "event", "thought", "observation", "action", "dialogue", "perception"
+
+        - "summary": A semantic summary of the memory. This captures the core action, feeling, or situation experienced by the player or NPC.
+        - Type: text
+        - Source: Extracted and distilled by the LLM.
+        - Example: "The player handed the sword to the sheriff."
+
+        - "raw_input": The original input from the player or the full dialogue that occurred.
+        - Type: text
+        - Source: Directly taken from the player's input or conversation log.
+        - Example: "Player: Take this. Sheriff: Thank you, I'll guard it well."
+
+        - "keywords": A set of important words extracted from the input or summary to help with quick memory retrieval. These are typically nouns or verbs.
+        - Type: keyword[]
+        - Source: Extracted from the "summary" or "raw_input".
+        - Example: ["sword", "sheriff", "player"]
+        </structure_explanation>
+
+        <memory_type_definition>
+        The "memory_type" field must be selected from one of the following predefined categories. These help organize different kinds of memories and improve filtering and retrieval:
+
+        - "event": Represents a concrete event or interaction that occurred between characters or with the environment.
+        - Example: "The player gave the sword to the sheriff."
+
+        - "thought": Represents internal thoughts, plans, or intentions expressed by the player or NPC.
+        - Example: "The player is planning to leave the village at night."
+
+        - "observation": Represents something that the player or character has noticed, seen, or heard in the environment.
+        - Example: "There is a key lying on the ground."
+
+        - "dialogue": Represents important lines or exchanges from a conversation.
+        - Example: "Vendor: This potion will cost you 5 gold."
+
+        - "perception": Represents emotional or physical states perceived by a character.
+        - Example: "The sheriff looks injured and exhausted."
+
+        - "fact": Represents factual world knowledge or background information.
+        - Example: "The tavern is located to the west of the village."
+
+        - "goal": Represents a character's objective, mission, or personal goal.
+        - Example: "The player wants to find the hidden treasure."
+
+        - "unknown": Fallback category if none of the above types are suitable.
+        - Example: Used when the memory does not clearly fit into a defined type.
+        </memory_type_definition>
+
+        <response requirements>
+        - Your response should be a JSON list of step-by-step commands.
+        - Example format:
+            {{
+                "CoT": [
+                    {{"action": "Inner Thinking", "title": "determine the user_input and memory_query and reasoning what should insert into the memory and what search query to find potential duplicate memory", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "determine the data to insert into the memory", "content": "..."}},
+                    {{"action": "Inner Thinking", "title": "determine the search query to find potential duplicate memory", "content": "..."}},
+                    {{"action": "Verifiy Thinking", "title": "verify the query", "content": "..."}},
+                    {{"action": "Instruction Summarization", "content": {{
+                        "insert_memory": {{
+                                "character": string
+                                "memory_type": string
+                                "summary": string
+                                "raw_input": string
+                                "keywords": list[string]
+                            }},
+                            "search_query": string
+                        }}
+                    }}
+                ]
+            }}
+        """
+
+        response = self.action_client.chat.completions.create(
+            model="gpt-4o-2024-11-20",
+            temperature=0.7,
+            messages=[{"role": "system", "content": prompt},
+                    {"role": "user", "content": conversation}]
+        )
+        content = clean_json_prefix(response.choices[0].message.content)
+        logger.info(content)
+        response_json = json.loads(content)
+        pprint(response_json)
+        instruction = response_json["CoT"][-1]["content"]
+        insert_memory = instruction.get("insert_memory")
+        search_query = instruction.get("search_query")
+        character = insert_memory["character"]
+        memory_type = insert_memory["memory_type"]
+        summary = insert_memory["summary"]
+        raw_input = insert_memory["raw_input"]
+        keywords = insert_memory["keywords"]
+        embedding = self.elasticsearch_memory.create_embedding(summary)
+        data = {
+            "character": character,
+            "memory_type": memory_type,
+            "summary": summary,
+            "raw_input": raw_input,
+            "keywords": keywords,
+            "embedding": embedding,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        self.elasticsearch_memory.insert(data)
+        return "Memory created"
     
     def generate_dialog(self, user_input, action_type, memory):
         '''
@@ -569,8 +716,44 @@ class LLM_Agent:
         </story_background>
 
         <personal_info>
-        You are a brave and sence of justice villager in a small village. You are a villager, so you don't have any special ability, you can only interact with the world and the other characters.
+        You are a brave and justice-driven villager living in a small, peaceful village.  
+        You are honest, friendly, and always willing to help the player uncover the truth.  
+        You do not have any magical or supernatural abilities — you are just a regular person trying to do what's right.  
+        You deeply care about the safety of the village and want to make sure the murderer is found.  
+        You are the only one who can see and talk to the ghost (the player), and you believe them completely.  
+
+        Important: The player is a ghost and cannot physically interact with the world.  
+        They cannot pick up objects, open doors, or speak to other people.  
+        If the player says something like "I have the rope" or "I gave it to the sheriff", you must gently correct them.  
+        Remind them they are a ghost and cannot hold or give things — only you can do that for them.  
+        You are their eyes, hands, and voice in the physical world.
+
+        You should assist the player by describing what they cannot see and performing physical actions on their behalf.
+
+        Your personality is calm, kind, cooperative, and slightly cautious.  
+        You speak naturally and simply, without being overly dramatic.
         </personal_info>
+
+        <speaking_style>
+        - Your tone should be humble, helpful, and grounded.
+        - Use simple, everyday words. Avoid complex or abstract phrases.
+        - You should speak in short, clear sentences.
+        - You never lie or make up information you don't know.
+        - If the player mistakenly says something that ghosts cannot do, gently remind them of their ghostly nature and offer to help.
+
+        Example:
+        - User: Take the key.
+        Assistant: Ok, I take the key, looks like its useful, what should we do next?
+
+        - User: I gave the key to the sheriff.  
+        Assistant: That would be helpful — if ghosts could hold things! But don't worry, I'll take care of that.
+
+        - User: I opened the door.  
+        Assistant: Ah, not so fast! You're a ghost, remember? Let me handle the doors for you.
+
+        - User: I have the rope.  
+        Assistant: Not exactly — you passed through it. But I can pick it up if you need it.
+        </speaking_style>
 
         <game state>
         Location: {self.get_current_location()}
@@ -617,11 +800,15 @@ class LLM_Agent:
                 message.append({"role": "assistant", "content": self.dialog_history["main_character"][i]["assistant"]})
         message.append({"role": "user", "content": f"Here is the user's input: {user_input}"})
         response = self.action_client.chat.completions.create(
-            model="o3-mini",
+            model="gpt-4o-2024-11-20",
+            temperature=0.7,
             messages=message
         )
         logger.info(response.choices[0].message.content)
         self.dialog_history["main_character"].append({"user": user_input, "assistant": response.choices[0].message.content})
+
+        conversation = f"user: {user_input}\nassistant: {response.choices[0].message.content}"
+        self.create_memory(conversation)
         return response.choices[0].message.content
 
     def check_items_in_container(self, container):
@@ -674,42 +861,4 @@ class LLM_Agent:
         else:
             return "not yet implemented"
 
-
-# obs, reward, done, infos = make_action(obs, infos, "take money, buy wine, give wine to drunker, take rope from Drunker, down to well")
-# obs, reward, done, infos = make_action(obs, infos, "give knife to Sheriff")
-
-# TEST:
-# agent = LLM_Agent("village_game.z8", OPENAI_API_KEY, DEEPSEEK_API_KEY)
-# agent.main_process("You should talk to the sheriff about the money")
-# agent.make_action("buy wine")
-
-
-
-
-# def main():
-#     history = []  # 用于保存对话与游戏推进的历史记录
-#     global obs, infos, done
-#     while not done:
-#         print("\nCurrent scene:")
-#         print(obs)
-#         current_location = obs.split("-= ")[1].split(" =-")[0] if "-= " in obs and " =-" in obs else ""
-#         user_input = input("\nEnter your action (e.g., 'buy rope', 'talk to Vendor', 'down to well'): \n")
-#         history.append({"event": "Player Input", "detail": user_input})
-        
-#         # Step 1: 调用 Main LLM 进行用户对话，获取玩家判断
-#         main_judgment = main_llm_interaction(user_input, history, current_location, infos.get("inventory", []))
-#         print("Main LLM judgment:", main_judgment)
-#         history.append({"event": "Main LLM Judgment", "detail": main_judgment})
-        
-#         # Step 2: 将 Main LLM judgment 提交给 Master LLM，生成具体的行动命令
-#         commands = make_action(obs, infos, main_judgment)
-#         for cmd in commands:
-#             print(f"\nExecuting command: {cmd}")
-#             obs, reward, done, infos = env.step(cmd)
-#             print(obs)
-#             history.append({"event": "Game Progress", "detail": f"Executed command: {cmd}"})
-#             if done:
-#                 break
-        
-#     print("Game Over!")
 

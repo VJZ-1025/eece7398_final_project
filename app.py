@@ -39,3 +39,15 @@ def chat(user_input: dict):
     chat_result = agent.main_process(user_input["user_input"])
     print(chat_result)
     return {"message": chat_result}
+
+@app.get("/check_inventory")
+def check_inventory():
+    return {"inventory": agent.get_current_inventory()}
+
+@app.get("/check_location")
+def check_location():
+    return {"location": agent.get_current_location()}
+
+@app.get("/check_obs")
+def check_obs():
+    return {"obs": agent.get_current_obs()}
