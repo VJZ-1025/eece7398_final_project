@@ -671,23 +671,26 @@ class LLM_Agent:
         instruction = response_json["CoT"][-1]["content"]
         insert_memory = instruction.get("insert_memory")
         search_query = instruction.get("search_query")
-        character = insert_memory["character"]
-        memory_type = insert_memory["memory_type"]
-        summary = insert_memory["summary"]
-        raw_input = insert_memory["raw_input"]
-        keywords = insert_memory["keywords"]
-        embedding = self.elasticsearch_memory.create_embedding(summary)
-        data = {
-            "character": character,
-            "memory_type": memory_type,
-            "summary": summary,
-            "raw_input": raw_input,
-            "keywords": keywords,
-            "embedding": embedding,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
-        }
-        self.elasticsearch_memory.insert(data)
-        return "Memory created"
+        if insert_memory:
+            character = insert_memory["character"]
+            memory_type = insert_memory["memory_type"]
+            summary = insert_memory["summary"]
+            raw_input = insert_memory["raw_input"]
+            keywords = insert_memory["keywords"]
+            embedding = self.elasticsearch_memory.create_embedding(summary)
+            data = {
+                "character": character,
+                "memory_type": memory_type,
+                "summary": summary,
+                "raw_input": raw_input,
+                "keywords": keywords,
+                "embedding": embedding,
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+            self.elasticsearch_memory.insert(data)
+            return "Memory created"
+        else:
+            return "No memory created"
     
     def generate_dialog(self, user_input, action_type, memory):
         '''
