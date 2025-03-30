@@ -139,7 +139,9 @@ class LLM_Agent:
             - for memory, if you can answer the question based on the current information you have, you should set memory to false, else you should set memory to true
             - content format: {{"question": "<a short description of the question>", "memory": true|false, "memory_query": "<a short description of the memory query>"}}
         - Talk: the content should generate the dialog as a villager based on the user's input, format should be json
-            - content format: {{"npc": "villager|Sheriff|Drunker|Vendor","dialog": "<a short description of the dialog>"}}
+            - if the conversation based on the memory, you should set memory to true, else you should set memory to false
+            - if the memory is true, you should set memory_query to the memory query, else you should set memory_query to ""
+            - content format: {{"npc": "villager|Sheriff|Drunker|Vendor","dialog": "<a short description of the dialog>", "memory": true|false, "memory_query": "<a short description of the memory query>"}}
         - Chat: The player wants to chat with you, and you need to generate the dialog as a villager based on the user's input
             - content formmat "<a short description of the dialog>"
         - Other: a reason why the player's intent is not clear, or the player's intent is not related to the game
@@ -180,6 +182,7 @@ class LLM_Agent:
             max_tokens=300,
             temperature=0.3,
         )
+        logger.info('debug: initial_process 183')
         logger.info(response.choices[0].message.content)
         list_actions = json.loads(clean_json_prefix(response.choices[0].message.content))["CoT"]
         logger.info(list_actions)
@@ -489,7 +492,7 @@ class LLM_Agent:
             )
             content = clean_json_prefix(response.choices[0].message.content)
             response_json = json.loads(content)
-            # logger.info("LLM returned query reasoning: %s", response_json)
+            logger.info("LLM returned query reasoning: %s", response_json)
             pprint(response_json)
             instruction = response_json["CoT"][-1]["content"]
 
@@ -528,14 +531,27 @@ class LLM_Agent:
             for field in ["character", "memory_type", "keywords"]:
                 field_info = query_content.get(field)
                 if field_info and field_info.get("need_get"):
-                    query_value = field_info.get("keywords_query") or field_info.get("character_name") or field_info.get("memory_type_query")
+                    query_value = (
+                        field_info.get("keywords_query") or
+                        field_info.get("character_name") or
+                        field_info.get("memory_type_query")
+                    )
                     if query_value:
-                        query_template["query"]["bool"]["must"].append({
-                            "match": {field: query_value}
-                        })
+                        if isinstance(query_value, list):
+                            query_template["query"]["bool"]["must"].append({
+                                "terms": {field: query_value}
+                            })
+                        else:
+                            query_template["query"]["bool"]["must"].append({
+                                "match": {field: query_value}
+                            })
 
             # execute the query
+            logger.info('debug: query_template 541')
+            logger.info(query_template)
             search_result = self.elasticsearch_memory.search(query_template)
+            logger.info('debug: search_result 541')
+            logger.info(search_result)
             hits = search_result.get("hits", {}).get("hits", [])
             if hits:
                 return hits[0]["_source"]["summary"]  # return multiple summary
@@ -656,6 +672,13 @@ class LLM_Agent:
                     }}
                 ]
             }}
+            character: the character related to the memory, it can be "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+            memory_type: the type of the memory, it can be "event", "thought", "observation", "action", "dialogue", "perception", "fact", "goal", "unknown"
+            summary: the summary of the memory
+            raw_input: the original input from the player or the full dialogue that occurred
+            keywords: the keywords of the memory
+            search_query: the search query to find potential duplicate memory, it should a single sentence
+        </response requirements>    
         """
 
         response = self.action_client.chat.completions.create(
@@ -807,6 +830,7 @@ class LLM_Agent:
             temperature=0.7,
             messages=message
         )
+        logger.info('debug: generate_dialog 812')
         logger.info(response.choices[0].message.content)
         self.dialog_history["main_character"].append({"user": user_input, "assistant": response.choices[0].message.content})
 
@@ -858,7 +882,11 @@ class LLM_Agent:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
             return self.generate_dialog(user_input, "Query", memory)
         elif content["status"] == "Talk":
-            return "not yet implemented"
+            memory_needed = content["content"]["memory"]
+            memory = "No memory needed"
+            if memory_needed:
+                memory = self.get_memory(user_input, content["content"]["memory_query"])
+            return self.generate_dialog(user_input, "Talk", memory)
         elif content["status"] == "Chat":
             return self.generate_dialog(user_input,"Chat", content["content"])
         else:
