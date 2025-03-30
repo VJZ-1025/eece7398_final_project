@@ -42,13 +42,11 @@ class ElasticsearchMemory:
         self.mapping = {
             "mappings": {
                 "properties": {
-                    "npc": {"type": "keyword"},
-                    "type": {"type": "keyword"},
+                    "character": {"type": "keyword"},
+                    "memory_type": {"type": "keyword"},
                     "summary": {"type": "text"},
                     "raw_input": {"type": "text"}, 
-                    "memory_query": {"type": "text"},
-                    "location": {"type": "keyword"},
-                    "inventory": {"type": "keyword"},
+                    "keywords": {"type": "keyword"},
                     "timestamp": {"type": "date"},
                     "embedding": {
                         "type": "dense_vector",
@@ -345,7 +343,7 @@ class LLM_Agent:
         return True
 
 
-    def get_memory(self, oringinal_sentence, memory_query):
+    def get_memory(self, original_sentence, memory_query):
         '''
         Get memory from the original sentence and the memory query
         Original sentence: the sentence that the player inputs
@@ -358,16 +356,14 @@ class LLM_Agent:
         </question>
 
         <elasticsearch_index_structure>
-         {{
+        {{
             "mappings": {{
                 "properties": {{
-                    "npc": {{"type": "keyword"}},
-                    "type": {{"type": "keyword"}},
+                    "character": {{"type": "keyword"}},
+                    "memory_type": {{"type": "keyword"}}, 
                     "summary": {{"type": "text"}},
                     "raw_input": {{"type": "text"}},
-                    "memory_query": {{"type": "text"}},
-                    "location": {{"type": "keyword"}},
-                    "inventory": {{"type": "keyword"}},
+                    "keywords": {{"type": "keyword"}},
                     "timestamp": {{"type": "date"}},
                     "embedding": {{
                         "type": "dense_vector",
@@ -377,8 +373,64 @@ class LLM_Agent:
                     }}
                 }}
             }}
-        }}
+        }}  
         </elasticsearch_index_structure>
+
+        <structure_explanation>
+        - "character": Indicates which character the memory is related to. This can be the player or a non-player character (NPC), or even an ambiguous entity (such as "yourself" or "unknown"). It is used to filter memories from the perspective of the involved character.
+        - Type: keyword
+        - Source: Derived from the dialogue context, usually the subject or object of the action.
+        - Possible values: "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+        - Example: If the dialogue is "You gave the sword to the guard", then character = "sheriff"
+
+        - "memory_type": Specifies the category of the memory, used for organizing and filtering different types of memory.
+        - Type: keyword
+        - Source: Determined by the LLM based on the context and meaning of the interaction.
+        - Example values: "event", "thought", "observation", "action", "dialogue", "perception"
+
+        - "summary": A semantic summary of the memory. This captures the core action, feeling, or situation experienced by the player or NPC.
+        - Type: text
+        - Source: Extracted and distilled by the LLM.
+        - Example: "The player handed the sword to the sheriff."
+
+        - "raw_input": The original input from the player or the full dialogue that occurred.
+        - Type: text
+        - Source: Directly taken from the player's input or conversation log.
+        - Example: "Player: Take this. Sheriff: Thank you, I'll guard it well."
+
+        - "keywords": A set of important words extracted from the input or summary to help with quick memory retrieval. These are typically nouns or verbs.
+        - Type: keyword[]
+        - Source: Extracted from the "summary" or "raw_input".
+        - Example: ["sword", "sheriff", "player"]
+        </structure_explanation>
+
+        <memory_type_definition>
+        The "memory_type" field must be selected from one of the following predefined categories. These help organize different kinds of memories and improve filtering and retrieval:
+
+        - "event": Represents a concrete event or interaction that occurred between characters or with the environment.
+        - Example: "The player gave the sword to the sheriff."
+
+        - "thought": Represents internal thoughts, plans, or intentions expressed by the player or NPC.
+        - Example: "The player is planning to leave the village at night."
+
+        - "observation": Represents something that the player or character has noticed, seen, or heard in the environment.
+        - Example: "There is a key lying on the ground."
+
+        - "dialogue": Represents important lines or exchanges from a conversation.
+        - Example: "Vendor: This potion will cost you 5 gold."
+
+        - "perception": Represents emotional or physical states perceived by a character.
+        - Example: "The sheriff looks injured and exhausted."
+
+        - "fact": Represents factual world knowledge or background information.
+        - Example: "The tavern is located to the west of the village."
+
+        - "goal": Represents a character's objective, mission, or personal goal.
+        - Example: "The player wants to find the hidden treasure."
+
+        - "unknown": Fallback category if none of the above types are suitable.
+        - Example: Used when the memory does not clearly fit into a defined type.
+        </memory_type_definition>
 
         <response requirements>
         Your response must follow a structured reasoning process with two distinct action types: **"Inner Thinking"**, **"Verifiy Thinking"**, and **"Instruction Summarization"**.
@@ -394,95 +446,107 @@ class LLM_Agent:
                     {{"action": "Verifiy Thinking", "title": "verify the query", "content": "..."}},
                     {{"action": "Instruction Summarization", "content": "{{
                         "query": {{
-                            "npc": {{
+                            "character": {{
                                 need_get: true|false,
-                                npc_name: "..."
+                                character_name: "..."
                             }},
-                            "type": {{
+                            "memory_type": {{
                                 need_get: true|false,
-                                type_query: "..."
+                                memory_type_query: "..."
                             }},
-                            "summary": {{
+                            "keywords": {{
                                 need_get: true|false,
-                                summary_query: "..."
-                            }},
-                            "location": {{
-                                need_get: true|false,
-                                location_query: "..."
-                            }},
-                            "inventory": {{
-                                need_get: true|false,
-                                inventory_query: "..."
+                                keywords_query: "..."
                             }}
                         }}
                         "word_need_embed": "..."
                     }}"}}
                 ]
             }}
-        - Explaination:
-            - if the need_get is true, you must have a query to search in Elasticsearch, the query is the key word that you think is most relevant to the original sentence and the memory query
-        </response requirements>
+        - Explanation:
+            - For each field (character, memory_type, keywords), if "need_get" is set to true, you must provide a corresponding query value (e.g., character_name, memory_type_query, keywords_query).
+            - The query value should be a word or phrase that is semantically most relevant to the original sentence and the memory query.
+            - These fields will be used to construct the Elasticsearch filter conditions.
+            - The "word_need_embed" must be a well-formed natural language sentence that represents the memory concept to be retrieved. It will be embedded and used for semantic search via cosine similarity.
+    </response requirements>
         """
 
         user_input = f"""
-        Original sentence: {oringinal_sentence}
-        Memory query: {memory_query}
-        """
-        response = self.main_client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "system", "content": prompt},
-                      {"role": "user", "content": user_input}],
-            temperature=0.3
-        )
-        response_json = json.loads(clean_json_prefix(response.choices[0].message.content))
-        embedding_word = response_json["CoT"][-1]["content"]["word_need_embed"]
-        embedding_vector = self.elasticsearch_memory.create_embedding(embedding_word)
-        qurey_template = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {
-                            "script_score": {
-                                "query": {"match_all": {}},
-                                "script": {
-                                    "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                                    "params": {"query_vector": embedding_vector.tolist()}
+            Original sentence: {original_sentence}
+            Memory query: {memory_query}
+            """
+        
+        try:
+            response = self.main_client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "system", "content": prompt},
+                        {"role": "user", "content": user_input}],
+                temperature=0.3
+            )
+            content = clean_json_prefix(response.choices[0].message.content)
+            response_json = json.loads(content)
+            # logger.info("LLM returned query reasoning: %s", response_json)
+            pprint(response_json)
+            instruction = response_json["CoT"][-1]["content"]
+
+            # get the word to embed
+            embedding_word = instruction.get("word_need_embed")
+            if not embedding_word:
+                logger.warning("No word to embed returned from LLM.")
+                return "No memory found"
+
+            embedding_vector = self.elasticsearch_memory.create_embedding(embedding_word)
+
+            # build the query template
+            query_template = {
+                "query": {
+                    "bool": {
+                        "must": [],
+                        "should": [
+                            {
+                                "script_score": {
+                                    "query": {"match_all": {}},
+                                    "script": {
+                                        "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                                        "params": {"query_vector": embedding_vector.tolist()}
+                                    }
                                 }
                             }
-                        }
-                    ]
-                }
-            },
-            "size": 10,
-            "sort": [
-                {
-                    "timestamp": {"order": "desc"}
-                }
-            ]
-        }
-        logger.info(response_json)
-        query_content = response_json["CoT"][-1]["content"]["query"]
-        query_fields = ["npc", "type", "summary", "location", "inventory"]
-        
-        for field in query_fields:
-            if query_content[field]["need_get"]:
-                qurey_template["query"]["bool"]["must"].append({
-                    "match": {
-                        field: query_content[field][f"{field}_query" if field != "npc" else "npc_name"]
+                        ]
                     }
-                })
-        
-        search_result = self.elasticsearch_memory.search(qurey_template)
-        if search_result["hits"]["hits"]:
-            return search_result["hits"]["hits"][0]["_source"]["summary"]
-        else:
-            return "No memory found"
+                },
+                "size": 5,  # can be changed based on the need
+                "sort": [{"timestamp": {"order": "desc"}}]
+            }
+
+            # add the structured field filter
+            query_content = instruction.get("query", {})
+            for field in ["character", "memory_type", "keywords"]:
+                field_info = query_content.get(field)
+                if field_info and field_info.get("need_get"):
+                    query_value = field_info.get("keywords_query") or field_info.get("character_name") or field_info.get("memory_type_query")
+                    if query_value:
+                        query_template["query"]["bool"]["must"].append({
+                            "match": {field: query_value}
+                        })
+
+            # execute the query
+            search_result = self.elasticsearch_memory.search(query_template)
+            hits = search_result.get("hits", {}).get("hits", [])
+            if hits:
+                return hits[0]["_source"]["summary"]  # return multiple summary
+            else:
+                return "No memory found"
+
+        except Exception as e:
+            logger.exception("Failed to get memory due to: %s", str(e))
+            return "Memory retrieval failed"
     
-    def generate_dialog(self, user_input, memory):
+    def generate_dialog(self, user_input, action_type, memory):
         '''
         Generate the dialog as a villager based on the user's input
         '''
-
+        logger.info(f"Generating dialog with memory: {self.obs}")
         prompt = f"""
         <question>
         You are the main character in the game, you task is to generate a dialog based on the history conversation and the user's input and the memory.
@@ -504,21 +568,34 @@ class LLM_Agent:
         The sheriff will arrest the vendor if you bring the knife to the sheriff.
         </story_background>
 
+        <personal_info>
+        You are a brave and sence of justice villager in a small village. You are a villager, so you don't have any special ability, you can only interact with the world and the other characters.
+        </personal_info>
+
         <game state>
-        {self.obs}
+        Location: {self.get_current_location()}
+        Inventory: {self.get_current_inventory()}
+        Environment: {self.get_current_obs()}
         </game state>
 
         <instructions>
         Below, you will receive a list of messages including:
             - previous user inputs,
+            - The action type, it can be "Query", "Action", "Talk", "Chat"
             - your previous responses,
             - and finally, the current user message.
+        Here is the provided action type: {action_type}
+        If the action type is "Query", you should generate the dialog based on the memory, history conversation and the user's input.
+        If the action type is "Action", you should generate the dialog based on the action status and the user's input, action status will provide with user's input.
+        If the action type is "Talk", you should generate the dialog based on the history conversation and the user's input.
+        If the action type is "Chat", you should generate the dialog based on the history conversation and the user's input.
         Use the full history to infer the user's intent and respond appropriately based on both past memory and current game state.
         One of the previous LLM recieved the user's input to determine if need external memory, here is the result:
         memory: {memory}
         Use the memory to generate the dialog. 
         - if the memory shows 'No memory needed', you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
-        - if the memory shows 'No memory found', its means the thing that user asked is not in memory, you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
+        - if the memory shows 'No memory found', its means the thing that user asked is not in memory. So, if conversation history also not contain, you should give negative response. like "I don't think we haven talked about that".
+        - NOTE: YOU MUST NOT provide the information that NOT in the memory if its indicate no memory found, you should give negative response if you don't know.
         </instructions>
 
         <response requirements>
@@ -579,20 +656,21 @@ class LLM_Agent:
             commands = content["content"]
             action = self.make_action(commands)
             if action:
-                return "action success"
+                user_input = f"User input: {user_input}, Action status: success"
+                return self.generate_dialog(user_input, "Action", "No memory needed")
             else:
-                return "action failed"
-
+                user_input = f"User input: {user_input}, Action status: failed"
+                return self.generate_dialog(user_input, "Action", "No memory needed")
         elif content["status"] == "Query":
             memory_needed = content["content"]["memory"]
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
-            return self.generate_dialog(user_input, memory)
+            return self.generate_dialog(user_input, "Query", memory)
         elif content["status"] == "Talk":
             return "not yet implemented"
         elif content["status"] == "Chat":
-            return self.generate_dialog(user_input, content["content"])
+            return self.generate_dialog(user_input,"Chat", content["content"])
         else:
             return "not yet implemented"
 
