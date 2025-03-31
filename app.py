@@ -41,6 +41,11 @@ def chat(user_input: dict):
     win = agent.check_win()
     return {"message": chat_result, "location": location, "win": win}
 
+@app.post("/reset")
+def reset():
+    agent.reset_game()
+    return {"message": "Game reset"}
+
 @app.get("/check_inventory")
 def check_inventory():
     return {"inventory": agent.get_current_inventory()}

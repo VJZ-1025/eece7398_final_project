@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import axios from 'axios'
 
 export const useDataStore = defineStore('DataStore', {
   state: () => ({
@@ -12,5 +13,8 @@ export const useDataStore = defineStore('DataStore', {
     setCurrentWindow(window) {
       this.currentWindow = window
     },
+    resetGame() {
+      axios.post('http://localhost:8000/reset')
+    }
   }
 })
