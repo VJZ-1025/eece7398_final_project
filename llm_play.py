@@ -245,13 +245,13 @@ class LLM_Agent:
                 - Grid Layout:
                     - Shop is at the northwest corner. Its east is the Village Committee, and its south is the School.
                     - Village Committee is at the north-central position. Its west is the Shop, its east is the Hospital, and its south is the Center Park.
-                    - Hospital is at the northeast corner. Its west is the Village Committee, and its south is the Sheriff's Office.
-                    - School is at the middle row, west side. Its north is the Shop, its east is the Center Park, and its south is House 1.
-                    - Center Park is at the center of the map. Its north is the Village Committee, its west is the School, its east is the Sheriff's Office, and its south is House 2.
-                    - Sheriff's Office is at the middle row, east side. Its north is the Hospital, its west is the Center Park, and its south is the Forest.
-                    - House 1 is at the southwest corner. Its north is the School, and its east is House 2.
-                    - House 2 is at the south-central position. Its north is the Center Park, its west is House 1, and its east is Forest.
-                    - Forest is at the southeast corner. Its north is the Sheriff's Office, and its west is House 2.
+                    - Hospital is at the northeast corner. Its west is the Village Committee, and its south is the Sheriff Office.
+                    - School is at the middle row, west side. Its north is the Shop, its east is the Center Park, and its south is Home.
+                    - Center Park is at the center of the map. Its north is the Village Committee, its west is the School, its east is the Sheriff Office, and its south is House.
+                    - Sheriff Office is at the middle row, east side. Its north is the Hospital, its west is the Center Park, and its south is the Forest.
+                    - Home is at the southwest corner. Its north is the School, and its east is House.
+                    - House is at the south-central position. Its north is the Center Park, its west is Home, and its east is Forest.
+                    - Forest is at the southeast corner. Its north is the Sheriff Office, and its west is House.
                 
                 - Container:
                     - Vendor:
@@ -261,18 +261,18 @@ class LLM_Agent:
                         - Location: Center Park
                         - Has items: {self.check_items_in_container('Well')}
                     - Sheriff:
-                        - Location: Sheriff's Office
+                        - Location: Sheriff Office
                         - Has items: {self.check_items_in_container('Sheriff')}
                     - Drunker:
                         - Location: Forest
                         - Has items: {self.check_items_in_container('Drunker')}
                 - NPCs (non-player characters):
                     - Villager:
-                        - Location: House 2
+                        - Location: House
                     - Drunker:
                         - Location: Forest
                     - Sheriff:
-                        - Location: Sheriff's Office
+                        - Location: Sheriff Office
                     - Vendor:
                         - Location: Shop
                 
@@ -312,12 +312,12 @@ class LLM_Agent:
                 <example>
                 Golden standard:
                 - command explanation: Take the money and go to shop then buy rope
-                - current location: House 1
+                - current location: Home
                     {{
                         "CoT": [
-                            {{"action": "Inner Thinking", "title": "Identify current situation and the target", "content": "The player is currently at House 1, which is in the bottom row, left column of the grid, the player inventory is empty. The target is take the money then go to shop, and buy rope, because buy rope is a special command, so it should divde to unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
-                            {{"action": "Inner Thinking", "title": "Determine the optimal path and commands and make draft of the command", "content": "Take money, then from house 1 to shop go north to school, then go north to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor. Hence, the command is: ['take money', 'go north', 'go north', 'unlock vendor with money', 'open vendor', 'take rope from vendor', 'insert money into vendor', 'close vendor']"}},
-                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from House 1 to School, and 'go north' moves the player from School to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
+                            {{"action": "Inner Thinking", "title": "Identify current situation and the target", "content": "The player is currently at Home, which is in the bottom row, left column of the grid, the player inventory is empty. The target is take the money then go to shop, and buy rope, because buy rope is a special command, so it should divde to unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
+                            {{"action": "Inner Thinking", "title": "Determine the optimal path and commands and make draft of the command", "content": "Take money, then from Home to shop go north to school, then go north to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor. Hence, the command is: ['take money', 'go north', 'go north', 'unlock vendor with money', 'open vendor', 'take rope from vendor', 'insert money into vendor', 'close vendor']"}},
+                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from Home to School, and 'go north' moves the player from School to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
                             {{"action": "Instruction Summarization", "status": "approved", "content": ["take money", "go north", "go north", "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"]}}
                         ]
                     }}
@@ -798,6 +798,7 @@ class LLM_Agent:
         If the action type is "Action", you should generate the dialog based on the action status and the user's input, action status will provide with user's input.
         If the action type is "Talk", you should generate the dialog based on the history conversation and the user's input.
         If the action type is "Chat", you should generate the dialog based on the history conversation and the user's input.
+        If the action type is "Other", you should give negative response, and remind user keep in finding the murderer, don't say anything else.
         Use the full history to infer the user's intent and respond appropriately based on both past memory and current game state.
         One of the previous LLM recieved the user's input to determine if need external memory, here is the result:
         memory: {memory}
@@ -861,6 +862,13 @@ class LLM_Agent:
     def get_current_location(self):
         return self.obs.split("-= ")[1].split(" =-")[0] if "-= " in self.obs and " =-" in self.obs else ""
     
+    def check_win(self):
+        '''
+        Check if the game is won by checking if the sheriff container has knife
+        '''
+        items = self.check_items_in_container('Sheriff')
+        return 'knife' in items
+    
     def main_process(self, user_input):
         '''
         Main process of the agent
@@ -890,6 +898,6 @@ class LLM_Agent:
         elif content["status"] == "Chat":
             return self.generate_dialog(user_input,"Chat", content["content"])
         else:
-            return "not yet implemented"
+            return self.generate_dialog(user_input, "Other", "No memory needed")
 
 

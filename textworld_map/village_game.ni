@@ -61,36 +61,36 @@ The description of r_3 is "[School part 0]".
 The r_6 is mapped south of r_3.
 The r_0 is mapped north of r_3.
 The r_4 is mapped east of r_3.
-Understand "Sheriff's Office" as r_5.
-The internal name of r_5 is "Sheriff's Office".
-The printed name of r_5 is "-= Sheriff'S Office =-".
-The Sheriff's Office part 0 is some text that varies. The Sheriff's Office part 0 is "Responsible for maintaining village security.".
-The description of r_5 is "[Sheriff's Office part 0]".
+Understand "Sheriff Office" as r_5.
+The internal name of r_5 is "Sheriff Office".
+The printed name of r_5 is "-= Sheriff Office =-".
+The Sheriff Office part 0 is some text that varies. The Sheriff Office part 0 is "Responsible for maintaining village security, sheriff is here.".
+The description of r_5 is "[Sheriff Office part 0]".
 
 The r_4 is mapped west of r_5.
 The r_8 is mapped south of r_5.
 The r_2 is mapped north of r_5.
-Understand "House 2" as r_7.
-The internal name of r_7 is "House 2".
-The printed name of r_7 is "-= House 2 =-".
-The House 2 part 0 is some text that varies. The House 2 part 0 is "Another resident's home.".
-The description of r_7 is "[House 2 part 0]".
+Understand "House" as r_7.
+The internal name of r_7 is "House".
+The printed name of r_7 is "-= House =-".
+The House part 0 is some text that varies. The House part 0 is "Another resident's home.".
+The description of r_7 is "[House part 0]".
 
 The r_6 is mapped west of r_7.
 The r_4 is mapped north of r_7.
 The r_8 is mapped east of r_7.
-Understand "House 1" as r_6.
-The internal name of r_6 is "House 1".
-The printed name of r_6 is "-= House 1 =-".
-The House 1 part 0 is some text that varies. The House 1 part 0 is "A typical resident's home.".
-The description of r_6 is "[House 1 part 0]".
+Understand "Home" as r_6.
+The internal name of r_6 is "Home".
+The printed name of r_6 is "-= Home =-".
+The Home part 0 is some text that varies. The Home part 0 is "Cozy home, but player died here, has blood on the floor,money on the table.".
+The description of r_6 is "[Home part 0]".
 
 The r_3 is mapped north of r_6.
 The r_7 is mapped east of r_6.
 Understand "Forest" as r_8.
 The internal name of r_8 is "Forest".
 The printed name of r_8 is "-= Forest =-".
-The Forest part 0 is some text that varies. The Forest part 0 is "A forest dangerous for villagers.".
+The Forest part 0 is some text that varies. The Forest part 0 is "A forest a drunker is lying on the ground.".
 The description of r_8 is "[Forest part 0]".
 
 The r_7 is mapped west of r_8.

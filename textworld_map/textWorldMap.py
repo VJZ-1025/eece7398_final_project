@@ -23,12 +23,12 @@ def generate_village_map(output_file="./village_game.z8"):
     # Middle row (Row2)
     r21 = gm.new_room(name="School", desc="Where children receive their education.")
     r22 = gm.new_room(name="Center Park", desc="A peaceful park with a mysterious well in the center.")
-    r23 = gm.new_room(name="Sheriff's Office", desc="Responsible for maintaining village security.")
+    r23 = gm.new_room(name="Sheriff Office", desc="Responsible for maintaining village security, sheriff is here.")
 
     # Bottom row (Row3)
-    r31 = gm.new_room(name="House 1", desc="A typical resident's home.")
-    r32 = gm.new_room(name="House 2", desc="Another resident's home.")
-    r33 = gm.new_room(name="Forest", desc="A forest dangerous for villagers.")
+    r31 = gm.new_room(name="Home", desc="Cozy home, but player died here, has blood on the floor,money on the table.")
+    r32 = gm.new_room(name="House", desc="Another resident's home.")
+    r33 = gm.new_room(name="Forest", desc="A forest a drunker is lying on the ground.")
 
     # --- 2. Establish connections between rooms ---
     # Horizontal connections (East-West)
@@ -36,15 +36,15 @@ def generate_village_map(output_file="./village_game.z8"):
     gm.connect(r12.east, r13.west)  # Village Committee -> Hospital
     gm.connect(r21.east, r22.west)  # School -> Park
     gm.connect(r22.east, r23.west)  # Park -> Sheriff's Office
-    gm.connect(r31.east, r32.west)  # House 1 -> House 2
-    gm.connect(r32.east, r33.west)  # House 2 -> Forest
+    gm.connect(r31.east, r32.west)  # Home -> House
+    gm.connect(r32.east, r33.west)  # House -> Forest
 
     # Vertical connections (North-South)
     gm.connect(r11.south, r21.north)  # Village Committee -> School
     gm.connect(r12.south, r22.north)  # Shop -> Park
     gm.connect(r13.south, r23.north)  # Sheriff's Office -> Hospital
-    gm.connect(r21.south, r31.north)  # School -> House 1
-    gm.connect(r22.south, r32.north)  # Park -> House 2
+    gm.connect(r21.south, r31.north)  # School -> Home
+    gm.connect(r22.south, r32.north)  # Park -> House
     gm.connect(r23.south, r33.north)  # Hospital -> Forest
 
     # --- 3. Add interactive objects ---

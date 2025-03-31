@@ -1,27 +1,43 @@
 <template>
-  <div class="app">
+  <div id="app">
     <header class="header">
-      <h1>TextWorld Chat</h1>
+      <div class="header-content">
+        <h1>TextWorld Chat</h1>
+      </div>
     </header>
-    <main class="main">
-      <ChatWindow />
-    </main>
+    <div class="header-content" style="margin-top: 1rem">
+      <button v-if="store.currentWindow === 'ChatWindow'" 
+              @click="store.setCurrentWindow('GameFlow')" 
+              class="back-button">
+        Back to Home
+      </button>
+    </div>
+    <GameFlow v-if="store.currentWindow === 'GameFlow'" />
+    <ChatWindow v-if="store.currentWindow === 'ChatWindow'" />
   </div>
 </template>
 
 <script>
+import GameFlow from './components/GameFlow.vue'
 import ChatWindow from './components/ChatWindow.vue'
+import { useDataStore } from './DataStore'
 
 export default {
   name: 'App',
   components: {
+    GameFlow,
     ChatWindow
+  },
+  setup() {
+    const store = useDataStore()
+    return { store }
   }
 }
 </script>
 
 <style>
-.app {
+#app {
+  font-family: Arial, sans-serif;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -31,14 +47,34 @@ export default {
 
 .header {
   padding: 1rem;
-  text-align: center;
   background-color: #444654;
   border-bottom: 1px solid #565869;
 }
 
-.main {
-  flex: 1;
-  overflow: hidden;
+.header-content {
+  display: flex;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.back-button {
+  margin-right: 2rem;
+  padding: 0.5rem 1rem;
+  background-color: #565869;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+}
+
+.back-button:hover {
+  background-color: #676980;
+}
+
+h1 {
+  margin: 0 auto;
 }
 
 * {
@@ -48,7 +84,15 @@ export default {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #343541;
+  color: white;
 }
-</style> 
+
+.title {
+  text-align: center;
+  padding-top: 20px;
+}
+
+</style>

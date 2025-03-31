@@ -37,8 +37,9 @@ app.add_middleware(
 def chat(user_input: dict):
     print(user_input)
     chat_result = agent.main_process(user_input["user_input"])
-    print(chat_result)
-    return {"message": chat_result}
+    location = agent.get_current_location()
+    win = agent.check_win()
+    return {"message": chat_result, "location": location, "win": win}
 
 @app.get("/check_inventory")
 def check_inventory():
