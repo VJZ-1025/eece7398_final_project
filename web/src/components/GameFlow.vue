@@ -9,9 +9,10 @@
     <!-- Story Background Screen -->
     <div v-if="currentScreen === 'story'" class="screen story-screen">
       <div class="story-content">
-        <h2>Story Background</h2>
-        <p>Welcome to a peaceful village nestled in the mountains. Life here is simple and quiet, but recent events have stirred up some mysteries that need to be solved.</p>
-        <p>As a newcomer to the village, you'll need to explore various locations, interact with villagers, and uncover the secrets that lie within this seemingly tranquil community.</p>
+        <h2>You are died</h2>
+        <p>On a peaceful evening, you were sleeping in your bed as usual. Suddenly, a chill swept over you, and you felt powerless—everything went black. You had died.</p>
+        <p>You became a ghost. You shouted loudly, but soon realized you couldn't do anything—you had no way to interact with the world around you.</p>
+        <p>Suddenly, you realized that your friend, Alex, seemed to notice you. You began to say to him:</p>
       </div>
       <button @click="nextScreen" class="next-button">Continue</button>
     </div>

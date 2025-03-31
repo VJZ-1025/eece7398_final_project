@@ -106,6 +106,7 @@ class LLM_Agent:
             "sheriff": []
             
         }
+        self.chat_round = 0
     def reset_game(self):
         self.obs, self.infos = self.env.reset()
         self.done = False
@@ -787,6 +788,11 @@ class LLM_Agent:
         Environment: {self.get_current_obs()}
         </game state>
 
+        <chat round>
+        {self.chat_round}
+        NOTE: if the chat round is 0, you act as shocked that player become a ghost, and you should ask the player to help you to find the murderer.
+        </chat round>
+
         <instructions>
         Below, you will receive a list of messages including:
             - previous user inputs,
@@ -837,6 +843,7 @@ class LLM_Agent:
 
         conversation = f"user: {user_input}\nassistant: {response.choices[0].message.content}"
         self.create_memory(conversation)
+        self.chat_round += 1
         return response.choices[0].message.content
 
     def check_items_in_container(self, container):
