@@ -14,7 +14,9 @@ from elasticsearch import Elasticsearch
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_API_KEY_Villager = os.getenv("DEEPSEEK_API_KEY_Villager")
 ES_HOST = os.getenv("ES_HOST")
+
 import logging
 
 # Configure logging
@@ -93,6 +95,7 @@ class LLM_Agent:
         self.elasticsearch_memory = ElasticsearchMemory(self.es)
         self.action_client = OpenAI(api_key=OPENAI_API_KEY)
         self.main_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+        self.villager = OpenAI(api_key =DEEPSEEK_API_KEY_Villager,base_url = "https://api.deepseek.com")
         self.infos = EnvInfos(admissible_commands=True, facts=True, inventory=True)
         self.env_id = textworld.gym.register_games([self.game_file], request_infos=self.infos, max_episode_steps=None)
         self.env = gym.make(self.env_id)
@@ -106,6 +109,15 @@ class LLM_Agent:
             "sheriff": []
             
         }
+        # npc location
+        self.npc_locations ={
+            "villager": "House 2"
+        }
+
+        self.npc_traits = {
+            "Villager": "A friendly local with gossip and knowledge about the village."
+        }
+
     def reset_game(self):
         self.obs, self.infos = self.env.reset()
         self.done = False
@@ -389,6 +401,7 @@ class LLM_Agent:
         - Source: Derived from the dialogue context, usually the subject or object of the action.
         - Possible values: "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
         - Example: If the dialogue is "You gave the sword to the guard", then character = "sheriff"
+        - Example: If you are inside house 2, the character could be the "Villager"
 
         - "memory_type": Specifies the category of the memory, used for organizing and filtering different types of memory.
         - Type: keyword
@@ -715,6 +728,7 @@ class LLM_Agent:
         else:
             return "No memory created"
     
+
     def generate_dialog(self, user_input, action_type, memory):
         '''
         Generate the dialog as a villager based on the user's input
@@ -834,6 +848,76 @@ class LLM_Agent:
         logger.info('debug: generate_dialog 812')
         logger.info(response.choices[0].message.content)
         self.dialog_history["main_character"].append({"user": user_input, "assistant": response.choices[0].message.content})
+
+        conversation = f"user: {user_input}\nassistant: {response.choices[0].message.content}"
+        self.create_memory(conversation)
+        return response.choices[0].message.content
+    def generate_villager_dialog(self, user_input, action_type, memory):
+        '''
+        Generate dialogue about the night of the murder (well incident)
+        Maintains original function structure with specialized prompt engineering
+        '''
+        logger.info(f"Generating event dialog with state: {self.get_current_obs()}")
+        
+        prompt = f"""
+        <question>
+        You are a timid villager in the game, your task is to generate defensive yet gradually revealing dialog. 
+        Maintain character consistency through these layered parameters:
+        </question>
+
+        <story_background>
+        You are a nervous villager in a small village. you are afraid the revenge and you don't want to tell others what you have heard that night.
+        After three times that you could tell the sound that metal into the well that night.
+
+        Key Facts:
+        - Murder: Player was killed last night with a knife
+        - Culprit: The vendor (but you're too scared to say this directly)
+        </story_backgroud>
+
+
+        <speaking_style>
+        - Stutter when nervous ("I-I don't know...")
+        - Avoid eye contact with others.
+        - Drop hints only when pressured:
+        1st ask: "I don't know...?"
+        2nd ask: "I... I heard something by the well..."
+        3rd ask: "*whisper* Metal hitting water... late at night..."
+        </speaking_style>
+
+        <game_state>
+        location: you are in the house 2
+        </game_state>
+        
+        <response requirements>
+            - Your response should be a dialog based on the history conversation and the user's input and the memory.
+            - The dialog should be in the same language as the user's input.
+            - The dialog should be in the same style as the history conversation.
+            - The dialog should be in the same tone as the history conversation.
+            - The dialog should be in the same format as the history conversation.
+            - The dialog should be as short as possible.
+            - The output should be a single string sentence.
+        </response requirements>
+        """
+
+        message = [{"role": "system", "content": prompt}]
+        if self.dialog_history.get("villager"):
+            for item in self.dialog_history["villager"][-3:]:  # Keep last 3 exchanges
+                message.extend([
+                    {"role": "user", "content": item["user"]},
+                    {"role": "assistant", "content": item["assistant"]}
+                ])
+        
+        message.append({"role": "user", "content": f"Player inquiry: [{user_input}]"})
+        
+        response = self.villager.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "system", "content": prompt},
+                    {"role": "user", "content": user_input}],
+            temperature=0.3
+            )
+            
+        logger.info(response.choices[0].message.content)
+        self.dialog_history["villager"].append({"user": user_input, "assistant": response.choices[0].message.content})
 
         conversation = f"user: {user_input}\nassistant: {response.choices[0].message.content}"
         self.create_memory(conversation)
