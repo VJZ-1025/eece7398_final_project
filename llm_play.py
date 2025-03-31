@@ -673,10 +673,11 @@ class LLM_Agent:
                     }}
                 ]
             }}
-            character: the character related to the memory, it can be "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
-            memory_type: the type of the memory, it can be "event", "thought", "observation", "action", "dialogue", "perception", "fact", "goal", "unknown"
-            summary: the summary of the memory
-            raw_input: the original input from the player or the full dialogue that occurred
+            insert_memory: the memory to insert into the memory, it should be a dictionary (NOT a list) with the following keys:
+                character: the character related to the memory, it can be "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+                memory_type: the type of the memory, it can be "event", "thought", "observation", "action", "dialogue", "perception", "fact", "goal", "unknown"
+                summary: the summary of the memory
+                raw_input: the original input from the player or the full dialogue that occurred
             keywords: the keywords of the memory
             search_query: the search query to find potential duplicate memory, it should a single sentence
         </response requirements>    
