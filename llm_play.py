@@ -892,30 +892,37 @@ class LLM_Agent:
         Main process of the agent
         '''
         content = self.initial_process(user_input)
+        talk = {
+            "talk_action": False,
+            "npc_name": ""
+        }
         if content["status"] == "Action":
             commands = content["content"]
             action = self.make_action(commands)
             if action:
                 user_input = f"User input: {user_input}, Action status: success"
-                return self.generate_dialog(user_input, "Action", "No memory needed")
+                message = self.generate_dialog(user_input, "Action", "No memory needed")
             else:
                 user_input = f"User input: {user_input}, Action status: failed"
-                return self.generate_dialog(user_input, "Action", "No memory needed")
+                message = self.generate_dialog(user_input, "Action", "No memory needed")
         elif content["status"] == "Query":
             memory_needed = content["content"]["memory"]
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
-            return self.generate_dialog(user_input, "Query", memory)
+            message = self.generate_dialog(user_input, "Query", memory)
         elif content["status"] == "Talk":
             memory_needed = content["content"]["memory"]
+            talk["npc_name"] = content["content"]["npc_name"]
+            talk["talk_action"] = True
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
-            return self.generate_dialog(user_input, "Talk", memory)
+            message = self.generate_dialog(user_input, "Talk", memory)
         elif content["status"] == "Chat":
-            return self.generate_dialog(user_input,"Chat", content["content"])
+            message = self.generate_dialog(user_input,"Chat", content["content"])
         else:
-            return self.generate_dialog(user_input, "Other", "No memory needed")
+            message = self.generate_dialog(user_input, "Other", "No memory needed")
+        return {"message": message, "location": self.get_current_location(), "win": self.check_win(), "talk":talk}
 
 
