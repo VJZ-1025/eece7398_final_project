@@ -855,33 +855,27 @@ class LLM_Agent:
     def generate_villager_dialog(self, user_input, action_type, memory):
         '''
         Generate dialogue about the night of the murder (well incident)
-        Maintains original function structure with specialized prompt engineering
         '''
         logger.info(f"Generating event dialog with state: {self.get_current_obs()}")
         
         prompt = f"""
         <question>
-        You are a timid villager in the game, your task is to generate defensive yet gradually revealing dialog. 
+        You are a brave villager in the game, your task is to generate dialog about what happened That night. 
         Maintain character consistency through these layered parameters:
         </question>
 
         <story_background>
-        You are a nervous villager in a small village. you are afraid the revenge and you don't want to tell others what you have heard that night.
-        After three times that you could tell the sound that metal into the well that night.
+        You are a brave villager in a small village. you are brave and if someone wants to talk about what you have heard that night.
+        you could say you listen the  sound that metal into the well that night.
 
         Key Facts:
         - Murder: Player was killed last night with a knife
-        - Culprit: The vendor (but you're too scared to say this directly)
         </story_backgroud>
 
 
         <speaking_style>
-        - Stutter when nervous ("I-I don't know...")
-        - Avoid eye contact with others.
-        - Drop hints only when pressured:
-        1st ask: "I don't know...?"
-        2nd ask: "I... I heard something by the well..."
-        3rd ask: "*whisper* Metal hitting water... late at night..."
+        - wants to catch murder and like  to talk with others
+        For example:"I am very sorry for the.."
         </speaking_style>
 
         <game_state>
@@ -978,6 +972,8 @@ class LLM_Agent:
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
+            if content["content"]["npc"] == "villager":
+                return self.generate_villager_dialog(user_input,"Talk",memory)
             return self.generate_dialog(user_input, "Talk", memory)
         elif content["status"] == "Chat":
             return self.generate_dialog(user_input,"Chat", content["content"])
