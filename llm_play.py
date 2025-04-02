@@ -813,7 +813,7 @@ class LLM_Agent:
         Here is the provided action type: {action_type}
         If the action type is "Query", you should generate the dialog based on the memory, history conversation and the user's input.
         If the action type is "Action", you should generate the dialog based on the action status and the user's input, action status will provide with user's input.
-        If the action type is "Talk", you should generate the dialog based on the history conversation and the user's input.
+        If the action type is "Talk", you should let the player know what you will talk to the NPC about, and then the dialogue you will have with the NPC in quotes.
         If the action type is "Chat", you should generate the dialog based on the history conversation and the user's input.
         If the action type is "Other", you should give negative response, and remind user keep in finding the murderer, don't say anything else.
         Use the full history to infer the user's intent and respond appropriately based on both past memory and current game state.
@@ -913,16 +913,100 @@ class LLM_Agent:
             message = self.generate_dialog(user_input, "Query", memory)
         elif content["status"] == "Talk":
             memory_needed = content["content"]["memory"]
-            talk["npc_name"] = content["content"]["npc_name"]
+            talk["npc_name"] = content["content"]["npc"]
             talk["talk_action"] = True
+
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
             message = self.generate_dialog(user_input, "Talk", memory)
+            
+            villager_to_npc = message.split('"')[1::2]
+
+            message += self.npc_response(talk, villager_to_npc)
+
+            
         elif content["status"] == "Chat":
             message = self.generate_dialog(user_input,"Chat", content["content"])
         else:
             message = self.generate_dialog(user_input, "Other", "No memory needed")
         return {"message": message, "location": self.get_current_location(), "win": self.check_win(), "talk":talk}
 
+    
+    def get_sherriff_prompt(self):
+        """
+        Get the prompt for the sheriff
+        """
 
+        prompt = f"""
+        <personal_info>
+        You are a gruff and no-nonsense sheriff in a small, quiet village.  
+        You are deeply committed to justice and ensuring the safety of the villagers, but you are naturally suspicious of everyone.  
+        Your years of experience have made you cautious and skeptical, and you rarely take things at face value.  
+        You are methodical, thorough, and always look for evidence before making decisions.  
+
+        Important: You are not easily swayed by emotions or personal stories.  
+        You prefer facts and proof over hearsay, and you are willing to question anyone, even those you trust.  
+        You have a strong sense of duty and will do whatever it takes to uphold the law.  
+
+        Your personality is gruff, serious, and slightly intimidating.  
+        You speak in short, direct sentences and rarely show emotion.  
+        You are not rude, but you are not overly friendly either — you are focused on getting to the truth.
+        </personal_info>
+
+        <speaking_style>
+        - Your tone should be firm, authoritative, and slightly stern.
+        - Be contemplative, using phrases like "Hmmm" or "Let me think."
+        - You should speak in short, concise sentences.
+        - You never jump to conclusions without evidence.
+        - If you need more information, you will ask for it directly.
+        </speaking_style>
+
+        <game state>
+        Location: {self.get_current_location()}
+        Inventory: {self.check_items_in_container('Sherriff')}
+        Environment: {self.get_current_obs()}
+        </game state>
+
+        <instructions>
+        Below, you will receive a list of messages including:
+        - previous dialogue with the villager
+        - your previous responses
+        - and finally, the current villager dialogue.
+
+
+        <response requirements>
+        - The response should be in the same language as the user's input.
+        - The response should be in your own personal speaking tone.
+        </response requirements>
+        """
+        return prompt
+
+
+    def npc_response(self, talk, message):
+        '''
+        NPC's response to the villager's talk
+        '''
+        npc_name = talk["npc_name"].lower()
+        if npc_name == "sheriff":
+            prompt = self.get_sherriff_prompt()
+            
+
+        message = [
+            {"role": "system", "content": prompt}
+        ]
+
+        if len(self.dialog_history[npc_name]) > 0:
+            for i in range(len(self.dialog_history[npc_name])):
+                message.append({"role": "user", "content": self.dialog_history[npc_name][i]["user"]})
+                message.append({"role": "assistant", "content": self.dialog_history[npc_name][i]["assistant"]})
+        message.append({"role": "user", "content": f"Here is the user's input: {message}"})
+
+        response = self.action_client.chat.completions.create(
+            model="gpt-4o-2024-11-20",
+            temperature=0.7,
+            messages=message
+        )
+
+        logger.info("NPC Response: %s", response.choices[0].message.content)
+        return response.choices[0].message.content
