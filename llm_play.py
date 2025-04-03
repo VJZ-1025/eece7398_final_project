@@ -894,7 +894,9 @@ class LLM_Agent:
         content = self.initial_process(user_input)
         talk = {
             "talk_action": False,
-            "npc_name": ""
+            "npc_name": "",
+            "llm_response": "",
+            "npc_response": ""
         }
         if content["status"] == "Action":
             commands = content["content"]
@@ -913,8 +915,10 @@ class LLM_Agent:
             message = self.generate_dialog(user_input, "Query", memory)
         elif content["status"] == "Talk":
             memory_needed = content["content"]["memory"]
-            talk["npc_name"] = content["content"]["npc_name"]
+            talk["npc_name"] = content["content"]["npc"]
             talk["talk_action"] = True
+            talk["llm_response"] = "test"
+            talk["npc_response"] = "test"
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
