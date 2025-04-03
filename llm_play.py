@@ -150,9 +150,16 @@ class LLM_Agent:
             - for memory, if you can answer the question based on the current information you have, you should set memory to false, else you should set memory to true
             - content format: {{"question": "<a short description of the question>", "memory": true|false, "memory_query": "<a short description of the memory query>"}}
         - Talk: the content should generate the dialog as a villager based on the user's input, format should be json
+            - first you need to determine which npc the player want you to talk to.
+            - then you need determine the npc is in the current location, if not, you should set npc to "no npc"
+                for example:
+                current location: Home
+                npc_name: Sheriff
+                because the sheriff is not in the home, so you should set npc to "no npc"
+            - npc_name: the name of the npc the player wants to talk to
             - if the conversation based on the memory, you should set memory to true, else you should set memory to false
             - if the memory is true, you should set memory_query to the memory query, else you should set memory_query to ""
-            - content format: {{"npc": "villager|Sheriff|Drunker|Vendor","dialog": "<a short description of the dialog>", "memory": true|false, "memory_query": "<a short description of the memory query>"}}
+            - content format: {{"npc": "villager|Sheriff|Drunker|Vendor|no npc","dialog": "<a short description of the dialog>", "memory": true|false, "memory_query": "<a short description of the memory query>"}}
         - Chat: The player wants to chat with you, and you need to generate the dialog as a villager based on the user's input
             - content formmat "<a short description of the dialog>"
         - Other: a reason why the player's intent is not clear, or the player's intent is not related to the game
@@ -163,6 +170,23 @@ class LLM_Agent:
         current location: {self.get_current_location()}
         inventory: {self.get_current_inventory()}
         </game status>
+        <game map>
+            - Shop is at the northwest corner. Its east is the Village Committee, and its south is the School.
+            - Village Committee is at the north-central position. Its west is the Shop, its east is the Hospital, and its south is the Center Park.
+            - Hospital is at the northeast corner. Its west is the Village Committee, and its south is the Sheriff Office.
+            - School is at the middle row, west side. Its north is the Shop, its east is the Center Park, and its south is Home.
+            - Center Park is at the center of the map. Its north is the Village Committee, its west is the School, its east is the Sheriff Office, and its south is House.
+            - Sheriff Office is at the middle row, east side. Its north is the Hospital, its west is the Center Park, and its south is the Forest.
+            - Home is at the southwest corner. Its north is the School, and its east is House.
+            - House is at the south-central position. Its north is the Center Park, its west is Home, and its east is Forest.
+            - Forest is at the southeast corner. Its north is the Sheriff Office, and its west is House.
+        </game map>
+        <npc location>
+            - Villager: House
+            - Sheriff: Sheriff Office
+            - Drunker: Forest
+            - Vendor: Shop
+        </npc location>
 
         <response requirements>
         Your response must follow a structured reasoning process with two distinct action types: **"Inner Thinking"**, **"Verifiy Thinking"**, and **"Instruction Summarization"**.
@@ -813,7 +837,7 @@ class LLM_Agent:
         Here is the provided action type: {action_type}
         If the action type is "Query", you should generate the dialog based on the memory, history conversation and the user's input.
         If the action type is "Action", you should generate the dialog based on the action status and the user's input, action status will provide with user's input.
-        If the action type is "Talk", you should generate the dialog based on the history conversation and the user's input.
+        If the action type is "Talk", you should generate the dialog based on the history conversation and the user's input, the user input will contain the dialog status, NPC name, llm response and npc response.
         If the action type is "Chat", you should generate the dialog based on the history conversation and the user's input.
         If the action type is "Other", you should give negative response, and remind user keep in finding the murderer, don't say anything else.
         Use the full history to infer the user's intent and respond appropriately based on both past memory and current game state.
@@ -857,6 +881,21 @@ class LLM_Agent:
         self.chat_round += 1
         return response.choices[0].message.content
 
+    def example_npc_talk(self, dialog_query, memory_needed, memory_query):
+        '''
+        Example npc talk
+        dialog_query: the dialog query
+        memory_needed: the memory needed
+        memory_query: the memory query
+        '''
+        prompt = f"""
+        """
+        
+        # call llm with prompt here
+
+        # final return should be:
+        return "LLM response", "NPC response"
+            
     def check_items_in_container(self, container):
         '''
         Check if the container has items, and return the items in a string
@@ -915,13 +954,31 @@ class LLM_Agent:
             message = self.generate_dialog(user_input, "Query", memory)
         elif content["status"] == "Talk":
             memory_needed = content["content"]["memory"]
+            memory_query = content["content"]["memory_query"]
             talk["npc_name"] = content["content"]["npc"]
-            talk["talk_action"] = True
-            talk["llm_response"] = "test"
-            talk["npc_response"] = "test"
+            conversation_query = content["content"]["dialog"]
+            # TODO: add more npc here
+            # Please see 884 for the example_npc_talk function, edit each npc function to return the correct llm response and npc response
+            if talk["npc_name"].lower() == "vendor":
+                talk["talk_action"] = True
+                talk["llm_response"], talk["npc_response"] = self.example_npc_talk(conversation_query, memory_needed, memory_query)
+            elif talk["npc_name"].lower() == "sheriff":
+                talk["talk_action"] = True
+                talk["llm_response"], talk["npc_response"] = self.example_npc_talk(conversation_query, memory_needed, memory_query)
+            elif talk["npc_name"].lower() == "drunker":
+                talk["talk_action"] = True
+                talk["llm_response"], talk["npc_response"] = self.example_npc_talk(conversation_query, memory_needed, memory_query)
+            elif talk["npc_name"].lower() == "villager":
+                talk["talk_action"] = True
+                talk["llm_response"], talk["npc_response"] = self.example_npc_talk(conversation_query, memory_needed, memory_query)
+            else:
+                talk["talk_action"] = False
+                talk["llm_response"] = ""
+                talk["npc_response"] = ""
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
+            user_input = f"User input: {user_input}, dialog status: {talk['talk_action']}, NPC name: {talk['npc_name'] if talk['npc_name'] != 'no npc' else ''}, llm response: {talk['llm_response']}, npc response: {talk['npc_response']}"
             message = self.generate_dialog(user_input, "Talk", memory)
         elif content["status"] == "Chat":
             message = self.generate_dialog(user_input,"Chat", content["content"])
