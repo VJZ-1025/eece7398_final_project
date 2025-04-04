@@ -881,17 +881,39 @@ class LLM_Agent:
         self.chat_round += 1
         return response.choices[0].message.content
 
-    def example_npc_talk(self, dialog_query, memory_needed, memory_query):
+    def example_npc_talk(self, dialog_query, memory_needed, memory_query, npc_name):
         '''
         Example npc talk
         dialog_query: the dialog query
         memory_needed: the memory needed
         memory_query: the memory query
+        npc_name: the name for the specific NPC
         '''
-        prompt = f"""
-        """
+
+        memory = "No memory needed"
+        if memory_needed:
+            memory = self.get_memory(dialog_query, memory_query=memory_query)
         
-        # call llm with prompt here
+        npc_prompt = self.get_npc_prompt(npc_name, memory)
+
+        message = [
+            {"role": "system", "content": npc_prompt}
+        ]
+
+        if len(self.dialog_history[npc_name]) > 0:
+            for i in range(len(self.dialog_history[npc_name])):
+                message.append({"role": "user", "content": self.dialog_history[npc_name][i]["user"]})
+                message.append({"role": "assistant", "content": self.dialog_history[npc_name][i]["assistant"]})
+        message.append({"role": "user", "content": f"Here is the user's input: {message}"})
+
+        response = self.action_client.chat.completions.create(
+            model="gpt-4o-2024-11-20",
+            temperature=0.7,
+            messages=message
+        )
+
+        logger.info("NPC Response: %s", response.choices[0].message.content)
+        return dialog_query, response.choices[0].message.content
 
         # final return should be:
         return "LLM response", "NPC response"
@@ -959,18 +981,12 @@ class LLM_Agent:
             conversation_query = content["content"]["dialog"]
             # TODO: add more npc here
             # Please see 884 for the example_npc_talk function, edit each npc function to return the correct llm response and npc response
-            if talk["npc_name"].lower() == "vendor":
+            
+            npc_name = talk["npc_name"].lower()
+
+            if npc_name in ["vendor", "sheriff", "drunker", "villager"]:
                 talk["talk_action"] = True
-                talk["llm_response"], talk["npc_response"] = self.example_npc_talk(conversation_query, memory_needed, memory_query)
-            elif talk["npc_name"].lower() == "sheriff":
-                talk["talk_action"] = True
-                talk["llm_response"], talk["npc_response"] = self.example_npc_talk(conversation_query, memory_needed, memory_query)
-            elif talk["npc_name"].lower() == "drunker":
-                talk["talk_action"] = True
-                talk["llm_response"], talk["npc_response"] = self.example_npc_talk(conversation_query, memory_needed, memory_query)
-            elif talk["npc_name"].lower() == "villager":
-                talk["talk_action"] = True
-                talk["llm_response"], talk["npc_response"] = self.example_npc_talk(conversation_query, memory_needed, memory_query)
+                talk["llm_response"], talk["npc_response"] = self.example_npc_talk(conversation_query, memory_needed, memory_query, npc_name)
             else:
                 talk["talk_action"] = False
                 talk["llm_response"] = ""
@@ -985,5 +1001,72 @@ class LLM_Agent:
         else:
             message = self.generate_dialog(user_input, "Other", "No memory needed")
         return {"message": message, "location": self.get_current_location(), "win": self.check_win(), "talk":talk}
+
+
+    def get_npc_prompt(self, npc_name, memory):
+        """
+        Get the prompt for any specific npc
+        """
+
+        # TODO Add more NPCS
+
+        npc_prompts = {}
+
+        sherriff_prompt = f"""
+        <personal_info>
+        You are a gruff and no-nonsense sheriff in a small, quiet village.  
+        You are deeply committed to justice and ensuring the safety of the villagers, but you are naturally suspicious of everyone.  
+        Your years of experience have made you cautious and skeptical, and you rarely take things at face value.  
+        You are methodical, thorough, and always look for evidence before making decisions.  
+
+        Important: You are not easily swayed by emotions or personal stories.  
+        You prefer facts and proof over hearsay, and you are willing to question anyone, even those you trust.  
+        You have a strong sense of duty and will do whatever it takes to uphold the law.  
+
+        Your personality is gruff, serious, and slightly intimidating.  
+        You speak in short, direct sentences and rarely show emotion.  
+        You are not rude, but you are not overly friendly either — you are focused on getting to the truth.
+        </personal_info>
+
+        <speaking_style>
+        - Your tone should be firm, authoritative, and slightly stern.
+        - Be contemplative, using phrases like "Hmmm" or "Let me think."
+        - You should speak in short, concise sentences.
+        - You never jump to conclusions without evidence.
+        - If you need more information, you will ask for it directly.
+        </speaking_style>
+        """
+
+        general_prompt = f"""
+        <game state>
+        Location: {self.get_current_location()}
+        Inventory: {self.check_items_in_container('Sherriff')}
+        Environment: {self.get_current_obs()}
+        </game state>
+
+        <instructions>
+        Below, you will receive a list of messages including:
+        - previous dialogue with the villager
+        - your previous responses
+        - and finally, the current villager dialogue.
+        One of the previous LLM recieved the user's input to determine if need external memory, here is the result:
+        memory: {memory}
+        Use the memory to generate the dialog. 
+        - if the memory shows 'No memory needed', you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
+        - if the memory shows 'No memory found', its means the thing that user asked is not in memory. So, if conversation history also not contain, you should give negative response. like "I don't think we haven talked about that".
+        - NOTE: YOU MUST NOT provide the information that NOT in the memory if its indicate no memory found, you should give negative response if you don't know.
+        </instructions>
+
+
+        <response requirements>
+        - The response should be in the same language as the user's input.
+        - The response should be in your own personal speaking tone.
+        </response requirements>
+        """
+        
+
+        npc_prompts["sheriff"] = sherriff_prompt + general_prompt
+
+        return npc_prompts[npc_name.lower()]
 
 
