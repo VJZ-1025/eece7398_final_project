@@ -27,24 +27,50 @@
       </div>
     </div>
 
-    <!-- Right side: Game Map -->
-    <div class="game-map">
-      <div class="map-container">
-        <div class="map-grid">
-          <!-- Top row -->
-          <div class="map-cell shop" :class="{ current: currentLocation === 'Shop' }">Shop</div>
-          <div class="map-cell village-committee" :class="{ current: currentLocation === 'Village Committee' }">Village Committee</div>
-          <div class="map-cell hospital" :class="{ current: currentLocation === 'Hospital' }">Hospital</div>
-          
-          <!-- Middle row -->
-          <div class="map-cell school" :class="{ current: currentLocation === 'School' }">School</div>
-          <div class="map-cell center-park" :class="{ current: currentLocation === 'Center Park' }">Center Park</div>
-          <div class="map-cell sheriff" :class="{ current: currentLocation === 'Sheriff Office' }">Sheriff Office</div>
-          
-          <!-- Bottom row -->
-          <div class="map-cell house1" :class="{ current: currentLocation === 'Home' }">Home</div>
-          <div class="map-cell house2" :class="{ current: currentLocation === 'House' }">House</div>
-          <div class="map-cell forest" :class="{ current: currentLocation === 'Forest' }">Forest</div>
+    <!-- Right side: Game Map and Dialogue -->
+    <div class="right-panel">
+      <div class="game-map">
+        <div class="map-container">
+          <div class="map-grid">
+            <!-- Top row -->
+            <div class="map-cell shop" :class="{ current: currentLocation === 'Shop' }">Shop</div>
+            <div class="map-cell village-committee" :class="{ current: currentLocation === 'Village Committee' }">Village Committee</div>
+            <div class="map-cell hospital" :class="{ current: currentLocation === 'Hospital' }">Hospital</div>
+            
+            <!-- Middle row -->
+            <div class="map-cell school" :class="{ current: currentLocation === 'School' }">School</div>
+            <div class="map-cell center-park" :class="{ current: currentLocation === 'Center Park' }">Center Park</div>
+            <div class="map-cell sheriff" :class="{ current: currentLocation === 'Sheriff Office' }">Sheriff Office</div>
+            
+            <!-- Bottom row -->
+            <div class="map-cell house1" :class="{ current: currentLocation === 'Home' }">Home</div>
+            <div class="map-cell house2" :class="{ current: currentLocation === 'House' }">House</div>
+            <div class="map-cell forest" :class="{ current: currentLocation === 'Forest' }">Forest</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dialogue Display -->
+      <div class="dialogue-container">
+        <div class="dialogue-content">
+          <div class="dialogue-header">
+            <span class="speaker">NPC Dialogue</span>
+          </div>
+          <div class="dialogue-text">
+            <template v-if="dialogue.talk">
+              <div v-for="(item, index) in dialogue.history" :key="index">
+                <div class="llm-response">
+                  <span class="speaker-name">Alex:</span> {{ item.llm_response }}
+                </div>
+                <div class="npc-response">
+                  <span class="speaker-name">{{ item.npc_name }}:</span> {{ item.npc_response }}
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="placeholder-text">No active conversation</div>
+            </template>
+          </div>
         </div>
       </div>
     </div>
@@ -65,7 +91,14 @@ export default {
     return {
       messages: [],
       isLoading: false,
-      userInput: ''
+      userInput: '',
+      dialogue: {
+        talk: false,
+        npc_name: '',
+        npc_response: '',
+        llm_response: '',
+        history: []
+      }
     }
   },
   computed: {
@@ -102,6 +135,27 @@ export default {
         // Update current location if it's in the response
         if (response.data.location) {
           this.store.setCurrentLocation(response.data.location)
+        }
+
+        // Update dialogue if it's in the response
+        if (response.data.talk) {
+          // If talk_action is true, add to history
+          if (response.data.talk.talk_action) {
+            this.dialogue.history.push({
+              npc_name: response.data.talk.npc_name,
+              npc_response: response.data.talk.npc_response,
+              llm_response: response.data.talk.llm_response
+            })
+            this.dialogue.talk = true
+          } else {
+            // If talk_action is false, clear history
+            this.dialogue.history = []
+            this.dialogue.talk = false
+          }
+        } else {
+          // If no talk object, clear history
+          this.dialogue.history = []
+          this.dialogue.talk = false
         }
       } catch (error) {
         console.error('Error:', error)
@@ -140,7 +194,7 @@ export default {
   flex-direction: column;
   background-color: #343541;
   border-radius: 8px;
-  min-width: 0; /* 防止flex子元素溢出 */
+  min-width: 0; 
 }
 
 .game-map {
@@ -151,16 +205,17 @@ export default {
   min-width: 0;
   display: flex;
   align-items: flex-start;
-  justify-content: center; /* 改回居中对齐 */
-  padding-top: 2rem;
-  padding-left: 25%; /* 添加左侧内边距，使地图整体向右偏移 */
+  justify-content: center;
+  padding-top: 1rem;
+  margin-bottom: 420px;
 }
 
 .map-container {
   width: 100%;
   display: flex;
   align-items: flex-start;
-  justify-content: center; /* 改回居中对齐 */
+  justify-content: center;
+  padding: 1rem;
 }
 
 .map-grid {
@@ -169,8 +224,8 @@ export default {
   grid-template-rows: repeat(3, 1fr);
   gap: 0.5rem;
   width: 100%;
+  max-width: 300px;
   aspect-ratio: 1;
-  max-width: 400px; /* 减小最大宽度 */
 }
 
 .map-cell {
@@ -182,9 +237,11 @@ export default {
   justify-content: center;
   text-align: center;
   padding: 0.5rem;
-  font-size: 0.9rem; /* 稍微减小字体 */
+  font-size: clamp(0.7rem, 1.2vw, 0.9rem);
   color: white;
   transition: all 0.3s ease;
+  word-break: break-word;
+  overflow: hidden;
 }
 
 .map-cell:hover {
@@ -192,7 +249,6 @@ export default {
   transform: scale(1.05);
 }
 
-/* 添加当前位置高亮效果 */
 .map-cell.current {
   background-color: #19c37d;
   border-color: #15a76c;
@@ -273,5 +329,105 @@ export default {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: relative;
+}
+
+.dialogue-container {
+  background-color: #343541;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+  min-height: 400px;
+  max-height: 400px;
+  overflow-y: auto;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+
+.dialogue-content {
+  background-color: #444654;
+  border-radius: 4px;
+  padding: 1rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialogue-header {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #565869;
+}
+
+.speaker {
+  font-weight: bold;
+  color: #19c37d;
+}
+
+.speaker-name {
+  font-weight: bold;
+  color: #19c37d;
+  margin-right: 0.5rem;
+}
+
+.dialogue-text {
+  line-height: 1.5;
+  color: white;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+/* Custom scrollbar styles */
+.dialogue-text::-webkit-scrollbar,
+.dialogue-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dialogue-text::-webkit-scrollbar-track,
+.dialogue-container::-webkit-scrollbar-track {
+  background: #343541;
+  border-radius: 3px;
+}
+
+.dialogue-text::-webkit-scrollbar-thumb,
+.dialogue-container::-webkit-scrollbar-thumb {
+  background: #565869;
+  border-radius: 3px;
+}
+
+.dialogue-text::-webkit-scrollbar-thumb:hover,
+.dialogue-container::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+.placeholder-text {
+  color: #565869;
+  font-style: italic;
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.npc-response {
+  color: white;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #565869;
+}
+
+.llm-response {
+  color: white;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #565869;
 }
 </style> 

@@ -37,9 +37,12 @@ app.add_middleware(
 def chat(user_input: dict):
     print(user_input)
     chat_result = agent.main_process(user_input["user_input"])
-    location = agent.get_current_location()
-    win = agent.check_win()
-    return {"message": chat_result, "location": location, "win": win}
+    return chat_result
+
+@app.post("/reset")
+def reset():
+    agent.reset_game()
+    return {"message": "Game reset"}
 
 @app.get("/check_inventory")
 def check_inventory():
