@@ -100,7 +100,7 @@ def generate_village_map(output_file="./village_game.z8"):
     gm.compile(output_file)
 
     #add helpful villager
-    Villager = gm.new('c','Helpful villager live in house 3','A helpful villager willing to share information') 
+    Villager = gm.new('c','Helpful villager live in house ','A helpful villager willing to share information') 
     r32.add(Villager)
     
     return game, gm
