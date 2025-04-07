@@ -77,6 +77,8 @@ class ElasticsearchMemory:
     
     def insert(self, data):
         return self.es.index(index=self.index_name, body=data)
+    def delete(self,id):
+        return self.es.delete(index="memory", id=id)
 
 
 
@@ -428,7 +430,7 @@ class LLM_Agent:
         - "memory_type": Specifies the category of the memory, used for organizing and filtering different types of memory.
         - Type: keyword
         - Source: Determined by the LLM based on the context and meaning of the interaction.
-        - Example values: "event", "thought", "observation", "action", "dialogue", "perception"
+        - Example values: "event", "thought", "observation", "dialogue", "perception", "fact", "goal", "preference", "unknown"
 
         - "summary": A semantic summary of the memory. This captures the core action, feeling, or situation experienced by the player or NPC.
         - Type: text
@@ -490,11 +492,11 @@ class LLM_Agent:
                         "query": {{
                             "character": {{
                                 need_get: true|false,
-                                character_name: "..."
+                                character_name: "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
                             }},
                             "memory_type": {{
                                 need_get: true|false,
-                                memory_type_query: "..."
+                                memory_type_query: "event", "thought", "observation", "dialogue", "perception", "fact", "goal", "preference", "unknown"
                             }},
                             "keywords": {{
                                 need_get: true|false,
@@ -539,29 +541,8 @@ class LLM_Agent:
 
             embedding_vector = self.elasticsearch_memory.create_embedding(embedding_word)
 
-            # build the query template
-            query_template = {
-                "query": {
-                    "bool": {
-                        "must": [],
-                        "should": [
-                            {
-                                "script_score": {
-                                    "query": {"match_all": {}},
-                                    "script": {
-                                        "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                                        "params": {"query_vector": embedding_vector.tolist()}
-                                    }
-                                }
-                            }
-                        ]
-                    }
-                },
-                "size": 5,  # can be changed based on the need
-                "sort": [{"timestamp": {"order": "desc"}}]
-            }
-
-            # add the structured field filter
+            must_conditions = []
+            should_conditions = []
             query_content = instruction.get("query", {})
             for field in ["character", "memory_type", "keywords"]:
                 field_info = query_content.get(field)
@@ -573,13 +554,36 @@ class LLM_Agent:
                     )
                     if query_value:
                         if isinstance(query_value, list):
-                            query_template["query"]["bool"]["must"].append({
-                                "terms": {field: query_value}
-                            })
+                            clause = {"terms": {field: query_value}}
                         else:
-                            query_template["query"]["bool"]["must"].append({
-                                "match": {field: query_value}
-                            })
+                            clause = {"match": {field: query_value}}
+
+                        if field == "keywords":
+                            should_conditions.append(clause)
+                        else:
+                            must_conditions.append(clause)
+
+            query_template = {
+                "query": {
+                    "script_score": {
+                        "query": {
+                            "bool": {
+                                "must": must_conditions,
+                                "should": should_conditions,
+                                "minimum_should_match": 0  # keyword 匹配不是强制，但提升分数
+                            }
+                        },
+                        "script": {
+                            "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                            "params": {
+                                "query_vector": embedding_vector.tolist()
+                            }
+                        }
+                    }
+                },
+                "size": 5,
+                "sort": [{"timestamp": {"order": "desc"}}]
+            }
 
             # execute the query
             logger.info('debug: query_template 541')
@@ -639,7 +643,7 @@ class LLM_Agent:
         - "memory_type": Specifies the category of the memory, used for organizing and filtering different types of memory.
         - Type: keyword
         - Source: Determined by the LLM based on the context and meaning of the interaction.
-        - Example values: "event", "thought", "observation", "action", "dialogue", "perception"
+        - Example values: "event", "thought", "observation", "dialogue", "perception", "fact", "goal", "preference", "unknown"
 
         - "summary": A semantic summary of the memory. This captures the core action, feeling, or situation experienced by the player or NPC.
         - Type: text
@@ -681,6 +685,9 @@ class LLM_Agent:
         - "goal": Represents a character's objective, mission, or personal goal.
         - Example: "The player wants to find the hidden treasure."
 
+        - "preference": Represents a character's preference or preference for a certain action.
+        - Example: "Vendor like eat apple."
+
         - "unknown": Fallback category if none of the above types are suitable.
         - Example: Used when the memory does not clearly fit into a defined type.
         </memory_type_definition>
@@ -696,24 +703,22 @@ class LLM_Agent:
                     {{"action": "Verifiy Thinking", "title": "verify the query", "content": "..."}},
                     {{"action": "Instruction Summarization", "content": {{
                         "insert_memory": {{
-                                "character": string
-                                "memory_type": string
+                                "character": "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+                                "memory_type": "event", "thought", "observation", "dialogue", "perception", "fact", "goal", "preference", "unknown"
                                 "summary": string
                                 "raw_input": string
                                 "keywords": list[string]
-                            }},
-                            "search_query": string
+                            }}
                         }}
                     }}
                 ]
             }}
             insert_memory: the memory to insert into the memory, it should be a dictionary (NOT a list) with the following keys:
                 - character: the character related to the memory, it can be "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
-                - memory_type: the type of the memory, it can be "event", "thought", "observation", "action", "dialogue", "perception", "fact", "goal", "unknown"
+                - memory_type: the type of the memory, it can be "event", "thought", "observation", "dialogue", "perception", "fact", "goal", "preference", "unknown"
                 - summary: the summary of the memory
                 - raw_input: the original input from the player or the full dialogue that occurred
                 - keywords: the keywords of the memory
-            search_query: the search query to find potential duplicate memory, it should a single sentence
         </response requirements>    
         """
 
@@ -729,14 +734,97 @@ class LLM_Agent:
         pprint(response_json)
         instruction = response_json["CoT"][-1]["content"]
         insert_memory = instruction.get("insert_memory")
-        search_query = instruction.get("search_query")
         if insert_memory:
+            embedding = self.elasticsearch_memory.create_embedding(insert_memory["summary"])
             character = insert_memory["character"]
             memory_type = insert_memory["memory_type"]
             summary = insert_memory["summary"]
             raw_input = insert_memory["raw_input"]
             keywords = insert_memory["keywords"]
-            embedding = self.elasticsearch_memory.create_embedding(summary)
+            # Check for potential duplicates using embedding similarity
+            similar_memories = self.elasticsearch_memory.search(
+                {
+                    "query": {
+                        "script_score": {
+                            "query": {
+                                "bool": {
+                                    "filter": [
+                                        {"term": {"character": character}},
+                                        {"term": {"memory_type": memory_type}},
+                                        {"terms": {"keywords": keywords}}
+                                    ]
+                                }
+                            },
+                            "script": {
+                                "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                                "params": {"query_vector": embedding.tolist()}
+                            }
+                        }
+                    },
+                    "size": 1
+                }
+            )
+            hits = similar_memories["hits"]["hits"]
+            logger.info(f"debug: similar_memories 762")
+            logger.info(similar_memories)
+            if hits:
+                old_memory = hits[0]["_source"]["summary"]
+                new_memory = insert_memory["summary"]
+                # call LLM to combine the memory and delete the old memory and insert the new memory
+                prompt = f"""
+                <question>
+                You are a Elasticsearch memory LLM, I will provide you the old memory and new generated memory.
+                you need understand the old memory and new generated memory, combine them into a new memory.
+                </question>
+                <instructions>
+                - Both memory are a single sentences, you need understand meaning.
+                - Then, you need to determine what does old memory information need to be updated in the new memory.
+                - Then, you need to determine if old memory need to be deleted.
+                </instructions>
+                <response requirements>
+                - Your response should be a JSON list of step-by-step commands.
+                - Example format:
+                    {{
+                        "CoT": [
+                            {{"action": "Inner Thinking", "title": "determine the old memory information need to be updated in the new memory", "content": "..."}},
+                            {{"action": "Inner Thinking", "title": "determine if old memory need to be deleted", "content": "..."}},
+                            {{"action": "Instruction Summarization", "content": {{
+                                "update_memory": {{
+                                    "new_memory": string
+                                    "delete_memory": boolean
+                                }}
+                            }}
+                        }}
+                    }}
+                update_memory: the memory to update the old memory, it should be a dictionary (NOT a list) with the following keys:
+                    - new_memory: the new memory
+                    - delete_memory: whether to delete the old memory, if need to delete, set to True, otherwise set to False
+                </response requirements>
+                """
+                user_input = f"""
+                old memory: {old_memory}
+                new memory: {new_memory}
+                """
+                response = self.action_client.chat.completions.create(
+                    model="gpt-4o-2024-11-20",
+                    temperature=0.7,
+                    messages=[{"role": "system", "content": prompt},
+                    {"role": "user", "content": user_input}]
+                )
+                content = clean_json_prefix(response.choices[0].message.content)
+                response_json = json.loads(content)
+                logger.info("debug: response_json 811")
+                pprint(response_json)
+                instruction = response_json["CoT"][-1]["content"]
+                update_memory = instruction.get("update_memory")
+                if update_memory:
+                    summary = update_memory["new_memory"]
+                    delete_memory = update_memory["delete_memory"]
+                    if delete_memory:
+                        index_id = hits[0]["_id"]
+                        self.elasticsearch_memory.delete(index_id)
+            else:
+                summary = insert_memory["summary"]
             data = {
                 "character": character,
                 "memory_type": memory_type,
