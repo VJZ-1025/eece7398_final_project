@@ -734,13 +734,21 @@ class LLM_Agent:
         pprint(response_json)
         instruction = response_json["CoT"][-1]["content"]
         insert_memory = instruction.get("insert_memory")
-        if insert_memory:
-            embedding = self.elasticsearch_memory.create_embedding(insert_memory["summary"])
-            character = insert_memory["character"]
-            memory_type = insert_memory["memory_type"]
-            summary = insert_memory["summary"]
-            raw_input = insert_memory["raw_input"]
-            keywords = insert_memory["keywords"]
+        if not insert_memory:
+            return "No memory created"
+
+        # Ensure insert_memory is always a list
+        if isinstance(insert_memory, dict):
+            insert_memory = [insert_memory]
+
+        for mem in insert_memory:
+            embedding = self.elasticsearch_memory.create_embedding(mem["summary"])
+            character = mem["character"]
+            memory_type = mem["memory_type"]
+            summary = mem["summary"]
+            raw_input = mem["raw_input"]
+            keywords = mem["keywords"]
+
             # Check for potential duplicates using embedding similarity
             similar_memories = self.elasticsearch_memory.search(
                 {
@@ -765,13 +773,12 @@ class LLM_Agent:
                 }
             )
             hits = similar_memories["hits"]["hits"]
-            logger.info(f"debug: similar_memories 762")
-            logger.info(similar_memories)
             if hits:
                 old_memory = hits[0]["_source"]["summary"]
-                new_memory = insert_memory["summary"]
-                # call LLM to combine the memory and delete the old memory and insert the new memory
-                prompt = f"""
+                new_memory = mem["summary"]
+
+                # Combine memory logic
+                merge_prompt = f"""
                 <question>
                 You are a Elasticsearch memory LLM, I will provide you the old memory and new generated memory.
                 you need understand the old memory and new generated memory, combine them into a new memory.
@@ -801,20 +808,17 @@ class LLM_Agent:
                     - delete_memory: whether to delete the old memory, if need to delete, set to True, otherwise set to False
                 </response requirements>
                 """
-                user_input = f"""
-                old memory: {old_memory}
-                new memory: {new_memory}
-                """
+                user_input = f"old memory: {old_memory}\nnew memory: {new_memory}"
                 response = self.action_client.chat.completions.create(
                     model="gpt-4o-2024-11-20",
                     temperature=0.7,
-                    messages=[{"role": "system", "content": prompt},
-                    {"role": "user", "content": user_input}]
+                    messages=[
+                        {"role": "system", "content": merge_prompt},
+                        {"role": "user", "content": user_input}
+                    ]
                 )
                 content = clean_json_prefix(response.choices[0].message.content)
                 response_json = json.loads(content)
-                logger.info("debug: response_json 811")
-                pprint(response_json)
                 instruction = response_json["CoT"][-1]["content"]
                 update_memory = instruction.get("update_memory")
                 if update_memory:
@@ -824,7 +828,8 @@ class LLM_Agent:
                         index_id = hits[0]["_id"]
                         self.elasticsearch_memory.delete(index_id)
             else:
-                summary = insert_memory["summary"]
+                summary = mem["summary"]
+
             data = {
                 "character": character,
                 "memory_type": memory_type,
@@ -835,9 +840,8 @@ class LLM_Agent:
                 "timestamp": datetime.utcnow().isoformat() + "Z"
             }
             self.elasticsearch_memory.insert(data)
-            return "Memory created"
-        else:
-            return "No memory created"
+
+        return "Memory created"
     
     def generate_dialog(self, user_input, action_type, memory):
         '''
@@ -1033,8 +1037,15 @@ class LLM_Agent:
         '''
         Check if the game is won by checking if the sheriff container has knife
         '''
-        items = self.check_items_in_container('Sheriff')
-        return 'knife' in items
+        knife = self.check_items_in_container('Sheriff')
+        if "knife" in knife:
+            rope = self.check_items_in_container('Vendor')
+            logger.info(f"debug: rope {rope}, {type(rope)}")
+            if "rope" in rope:
+                return "good_end"
+            else:
+                return "bad_end"
+        return "incomplete"
     
     def main_process(self, user_input):
         '''

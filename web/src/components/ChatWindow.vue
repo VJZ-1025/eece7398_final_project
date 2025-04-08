@@ -22,8 +22,10 @@
           placeholder="Type your command here..."
           rows="1"
           class="input-field"
+          :disabled="isGameEnded"
         ></textarea>
-        <button @click="sendMessage" class="send-button" :disabled="isLoading">Send</button>
+        <button v-if="!isGameEnded" @click="sendMessage" class="send-button" :disabled="isLoading">Send</button>
+        <button v-else @click="handleNext" class="next-button">Next</button>
       </div>
     </div>
 
@@ -74,15 +76,25 @@
         </div>
       </div>
     </div>
+
+    <!-- Game End Overlay -->
+    <GameEnd 
+      :gameStatus="gameStatus"
+      @next="handleNext"
+    />
   </div>
 </template>
 
 <script>
 import axios from 'axios'
 import { useDataStore } from '../DataStore'
+import GameEnd from './GameEnd.vue'
 
 export default {
   name: 'ChatWindow',
+  components: {
+    GameEnd
+  },
   setup() {
     const store = useDataStore()
     return { store }
@@ -98,12 +110,16 @@ export default {
         npc_response: '',
         llm_response: '',
         history: []
-      }
+      },
+      gameStatus: 'incomplete'
     }
   },
   computed: {
     currentLocation() {
       return this.store.currentLocation
+    },
+    isGameEnded() {
+      return this.gameStatus === 'good_end' || this.gameStatus === 'bad_end'
     }
   },
   methods: {
@@ -131,6 +147,11 @@ export default {
           role: 'assistant',
           content: response.data.message
         })
+
+        // Update game status if it's in the response
+        if (response.data.win) {
+          this.gameStatus = response.data.win
+        }
 
         // Update current location if it's in the response
         if (response.data.location) {
@@ -171,6 +192,15 @@ export default {
       this.$nextTick(() => {
         this.scrollToBottom()
       })
+    },
+    handleNext() {
+      // Reset game state
+      this.gameStatus = 'incomplete'
+      this.dialogue.history = []
+      this.dialogue.talk = false
+      this.messages = []
+      // Reset location to Home
+      this.store.setCurrentLocation('Home')
     },
     scrollToBottom() {
       const container = this.$refs.messagesContainer
@@ -429,5 +459,24 @@ export default {
   margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #565869;
+}
+
+.next-button {
+  padding: 0.75rem 1.5rem;
+  background-color: #19c37d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.next-button:hover {
+  background-color: #15a76c;
+}
+
+.input-field:disabled {
+  background-color: #565869;
+  cursor: not-allowed;
 }
 </style> 
