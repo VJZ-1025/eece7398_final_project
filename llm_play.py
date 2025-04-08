@@ -349,8 +349,8 @@ class LLM_Agent:
                         "CoT": [
                             {{"action": "Inner Thinking", "title": "Identify current situation and the target", "content": "..."}},
                             {{"action": "Inner Thinking", "title": "Determine the optimal path and commands and make draft of the command", "content": "..."}},
-                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "..."}},
-                            {{"action": "Instruction Summarization", "status": "approved|rejected|confused", "content": ["...command 1", "...command 2"]}}
+                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result, and determine the NPC", "content": "..."}},
+                            {{"action": "Instruction Summarization", "status": "approved|rejected|confused", "npc": "None|Sherriff|Drunker|Villager|Vendor", "content": ["...command 1", "...command 2"]}}
                         ]
                     }}
                 ***Do NOT include any extra text outside of the JSON format, do NOT modify the action and title, DO NOT modify the number of CoT***
@@ -364,8 +364,8 @@ class LLM_Agent:
                         "CoT": [
                             {{"action": "Inner Thinking", "title": "Identify current situation and the target", "content": "The player is currently at Home, which is in the bottom row, left column of the grid, the player inventory is empty. The target is take the money then go to shop, and buy rope, because buy rope is a special command, so it should divde to unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
                             {{"action": "Inner Thinking", "title": "Determine the optimal path and commands and make draft of the command", "content": "Take money, then from Home to shop go north to school, then go north to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor. Hence, the command is: ['take money', 'go north', 'go north', 'unlock vendor with money', 'open vendor', 'take rope from vendor', 'insert money into vendor', 'close vendor']"}},
-                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from Home to School, and 'go north' moves the player from School to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
-                            {{"action": "Instruction Summarization", "status": "approved", "content": ["take money", "go north", "go north", "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"]}}
+                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct and the npc is the Vendor. 'go north' moves the player from Home to School, and 'go north' moves the player from School to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
+                            {{"action": "Instruction Summarization", "status": "approved", npc: "Vendor", "content": ["take money", "go north", "go north", "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"]}}
                         ]
                     }}
                 </example>
@@ -394,7 +394,7 @@ class LLM_Agent:
             if self.done:
                 logger.info("Game Over!")
                 return True
-        return True
+        return jsonfy_response["CoT"][-1], True
 
 
     def get_memory(self, original_sentence, memory_query):
@@ -894,7 +894,7 @@ class LLM_Agent:
         self.create_memory(conversation)
         return response.choices[0].message.content
     
-    def get_Alex_npc(self,dialog_query,memory_query):
+    def get_Alex_npc(self, dialog_query, memory_query):
         '''
         Generate the dialog as a villager based on the user's input
         '''
@@ -965,6 +965,11 @@ class LLM_Agent:
         Below, you will receive a list of messages including:
             - previous user inputs,
             - your previous responses,
+
+        If you are given a series of actions such as "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"], this means you are interacting with the vendor and should generate a dialog based on the action.
+        It is important that you treat it like a conversation, not just a series of actions.
+        Example: "Hello, I'm looking to purchase the rope that you have for sale. Here's the payment I have for you."
+
         
         Use the memory to generate the dialog. 
         - if the memory shows 'No memory needed', you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
@@ -1091,10 +1096,41 @@ class LLM_Agent:
         }
         if content["status"] == "Action":
             commands = content["content"]
-            action = self.make_action(commands)
-            if action:
+            action, action_success = self.make_action(commands)
+            if action_success:
                 user_input = f"User input: {user_input}, Action status: success"
-                message = self.generate_dialog(user_input, "Action", "No memory needed")
+
+
+                if action['npc'].lower() in ["vendor", "sheriff", "drunker", "villager"]:
+                    npc_name = action['npc'].lower()
+                    talk["npc_name"] = npc_name
+
+
+                    actions_with_npc = str([s for s in action['content'] if npc_name in s])
+                    logger.info("Actions with NPC: %s", actions_with_npc)
+
+                    if len(actions_with_npc) == 0:
+                        message = self.generate_dialog(user_input, "Action", "No memory needed")
+                    else:
+                        # TODO add memory into this, since no memory query is generated for Action types
+
+                        memory = "No memory eneded"
+                        talk["talk_action"] = True
+                        talk["llm_response"], talk["npc_response"] = self.example_npc_talk(dialog_query=actions_with_npc, 
+                                                                                        memory_needed=False,
+                                                                                        memory_query=memory,
+                                                                                        npc_name=npc_name)
+        
+                        message = self.generate_dialog(user_input, "Action", memory)
+
+                        # TODO figure out if we want to concatenate the responses in case there is any important dialog when purchasing something
+
+                        # user_talk_input = f"User input: {actions_with_npc}, Action status: success, NPC name: {talk['npc_name'] if talk['npc_name'] != 'no npc' else ''}, llm response: {talk['llm_response']}, npc response: {talk['npc_response']}"
+                        # message += self.generate_dialog(user_talk_input, "Talk", memory)
+
+                else:
+                    message = self.generate_dialog(user_input, "Action", "No memory needed")
+
             else:
                 user_input = f"User input: {user_input}, Action status: failed"
                 message = self.generate_dialog(user_input, "Action", "No memory needed")
@@ -1194,7 +1230,7 @@ class LLM_Agent:
         1. If the customer wants to buy something:
         - Respond kindly.
         - If they want wine, recommend it brightly, e.g. "Ah, a fine choice! This bottle is very popular."
-        - If they want rope, act nervous or hesitant, and ask what it's for.
+        - If they want rope, act nervous or hesitant, and ask what it's for, but still sell it.
         - Always end politely, e.g. "Have a nice day!"
 
         2. If the customer asks about the murder:
@@ -1268,7 +1304,6 @@ class LLM_Agent:
         villager: "Did you hear about the murder last night?"
         Drunker: "Hmmph. Yes I did... Very sad to hear about itttt... Lemme pour a drink outfer the villger who died. Never knew'im but sad to hear 'bout it."
         </example_dialogue>
-
         """
 
         sherriff_prompt = f"""
