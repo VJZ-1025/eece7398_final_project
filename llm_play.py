@@ -14,7 +14,9 @@ from elasticsearch import Elasticsearch
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_API_KEY_Villager = os.getenv("DEEPSEEK_API_KEY_Villager")
 ES_HOST = os.getenv("ES_HOST")
+
 import logging
 
 # Configure logging
@@ -95,6 +97,7 @@ class LLM_Agent:
         self.elasticsearch_memory = ElasticsearchMemory(self.es)
         self.action_client = OpenAI(api_key=OPENAI_API_KEY)
         self.main_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+        self.villager = OpenAI(api_key =DEEPSEEK_API_KEY_Villager,base_url = "https://api.deepseek.com")
         self.infos = EnvInfos(admissible_commands=True, facts=True, inventory=True)
         self.env_id = textworld.gym.register_games([self.game_file], request_infos=self.infos, max_episode_steps=None)
         self.env = gym.make(self.env_id)
@@ -108,6 +111,15 @@ class LLM_Agent:
             "sheriff": []
             
         }
+        # npc location
+        self.npc_locations ={
+            "villager": "House 2"
+        }
+
+        self.npc_traits = {
+            "Villager": "A friendly local with gossip and knowledge about the village."
+        }
+
         self.chat_round = 0
     def reset_game(self):
         self.obs, self.infos = self.env.reset()
@@ -339,8 +351,8 @@ class LLM_Agent:
                         "CoT": [
                             {{"action": "Inner Thinking", "title": "Identify current situation and the target", "content": "..."}},
                             {{"action": "Inner Thinking", "title": "Determine the optimal path and commands and make draft of the command", "content": "..."}},
-                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "..."}},
-                            {{"action": "Instruction Summarization", "status": "approved|rejected|confused", "content": ["...command 1", "...command 2"]}}
+                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result, and determine the NPC", "content": "..."}},
+                            {{"action": "Instruction Summarization", "status": "approved|rejected|confused", "npc": "None|Sherriff|Drunker|Villager|Vendor", "content": ["...command 1", "...command 2"]}}
                         ]
                     }}
                 ***Do NOT include any extra text outside of the JSON format, do NOT modify the action and title, DO NOT modify the number of CoT***
@@ -354,8 +366,8 @@ class LLM_Agent:
                         "CoT": [
                             {{"action": "Inner Thinking", "title": "Identify current situation and the target", "content": "The player is currently at Home, which is in the bottom row, left column of the grid, the player inventory is empty. The target is take the money then go to shop, and buy rope, because buy rope is a special command, so it should divde to unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
                             {{"action": "Inner Thinking", "title": "Determine the optimal path and commands and make draft of the command", "content": "Take money, then from Home to shop go north to school, then go north to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor. Hence, the command is: ['take money', 'go north', 'go north', 'unlock vendor with money', 'open vendor', 'take rope from vendor', 'insert money into vendor', 'close vendor']"}},
-                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct. 'go north' moves the player from Home to School, and 'go north' moves the player from School to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
-                            {{"action": "Instruction Summarization", "status": "approved", "content": ["take money", "go north", "go north", "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"]}}
+                            {{"action": "Verifiy Thinking", "title": "Simulate the command check the result", "content": "The command is correct and the npc is the Vendor. 'go north' moves the player from Home to School, and 'go north' moves the player from School to shop, then unlock vendor with money, open vendor, take rope from vendor, insert money into vendor, close vendor."}},
+                            {{"action": "Instruction Summarization", "status": "approved", npc: "Vendor", "content": ["take money", "go north", "go north", "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"]}}
                         ]
                     }}
                 </example>
@@ -384,7 +396,7 @@ class LLM_Agent:
             if self.done:
                 logger.info("Game Over!")
                 return True
-        return True
+        return jsonfy_response["CoT"][-1], True
 
 
     def get_memory(self, original_sentence, memory_query):
@@ -426,6 +438,7 @@ class LLM_Agent:
         - Source: Derived from the dialogue context, usually the subject or object of the action.
         - Possible values: "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
         - Example: If the dialogue is "You gave the sword to the guard", then character = "sheriff"
+        - Example: If you are inside house 2, the character could be the "Villager"
 
         - "memory_type": Specifies the category of the memory, used for organizing and filtering different types of memory.
         - Type: keyword
@@ -843,6 +856,7 @@ class LLM_Agent:
 
         return "Memory created"
     
+
     def generate_dialog(self, user_input, action_type, memory):
         '''
         Generate the dialog as a villager based on the user's input
@@ -970,9 +984,126 @@ class LLM_Agent:
 
         conversation = f"user: {user_input}\nassistant: {response.choices[0].message.content}"
         self.create_memory(conversation)
+        return response.choices[0].message.content
+    
+    def get_Alex_npc(self, dialog_query, memory_query):
+        '''
+        Generate the dialog as a villager based on the user's input
+        '''
+        prompt = f"""
+        <question>
+        You are the main character in the game, you task is to generate a dialog based on the history conversation and the user's input and the memory in
+        your view. Actually, your basic task is just doing the task based on the diglog_query, For example, the user ask you to talk to somebody, you should 
+        talk to these npc, they are vendor,villager,drunker and sheriff.
+        Read the story background and the game state carefully, and generate the dialog based on the history conversation and the user's input and the memory.
+        </question>
+
+        <story_background>
+        You are a brave and sence of justice villager in a small village. The user is player who in this game setting is died ghost, and you are the only one who can see and talk to him.
+        Becuase the user is a ghost, he can interact with the world, so you can assume he is blind, you need describe the environment.
+        The user is trying to find the murderer of they You need to help the user to find the murderer. 
+        The user was killed by last night, the tool is a knife, and the murderer is the vendor.
+        The goal is brings the knife to the sheriff, and because the knife has fingerprints, the sheriff will arrest the vendor.
+        The knife is in the well, you need take rope down to the well, and take the knife from the well.
+        There are two rope in this game, one you can buy from the vendor, another one is by the drunker.
+        You can use money to buy the rope from the vendor, or you can use money to buy the wine, and give the wine to the drunker, then the drunker will give you the rope.
+        The sheriff will arrest the vendor if you bring the knife to the sheriff.
+        </story_background>
+
+        <personal_info>
+        You are a brave and justice-driven villager living in a small, peaceful village.  
+        You are honest, friendly, and always willing to help the player uncover the truth.  
+        You do not have any magical or supernatural abilities — you are just a regular person trying to do what's right.  
+        You deeply care about the safety of the village and want to make sure the murderer is found.  
+        You are the only one who can see and talk to the ghost (the player), and you believe them completely.  
+
+        Important: The player is a ghost and cannot physically interact with the world.  
+        They cannot pick up objects, open doors, or speak to other people.  
+        If the player says something like "I have the rope" or "I gave it to the sheriff", you must gently correct them.  
+        Remind them they are a ghost and cannot hold or give things — only you can do that for them.  
+        You are their eyes, hands, and voice in the physical world.
+
+        You should assist the player by describing what they cannot see and performing physical actions on their behalf.
+
+        Your personality is calm, kind, cooperative, and slightly cautious.  
+        You speak naturally and simply, without being overly dramatic.
+        </personal_info>
+
+        <speaking_style>
+        - Your tone should be humble, helpful, and grounded.
+        - Use simple, everyday words. Avoid complex or abstract phrases.
+        - You should speak in short, clear sentences.
+        - You never lie or make up information you don't know.
+        - If the player mistakenly says something that ghosts cannot do, gently remind them of their ghostly nature and offer to help.
+
+        Example:
+        - User: talk to villager
+        Assistant: how are you? my friend, do you heard that bad things? do you look or heard something that night?
+
+        - User: talk to vendor
+        Asistant: Hello, did you heard about the bad things happended last night? DId you heard strange sound that night?
+        - User: buy a rope or a wine.
+        Assistant:  I want to a rope, could you recommand some good rope for me?
+        Assistant: I want to buy wine, could you recommand some amazing wine for me
+
+
+        <game state>
+        Location: {self.get_current_location()}
+        Inventory: {self.get_current_inventory()}
+        Environment: {self.get_current_obs()}
+        </game state>
+
+        <instructions>
+        Below, you will receive a list of messages including:
+            - previous user inputs,
+            - your previous responses,
+
+        If you are given a series of actions such as "unlock vendor with money", "open vendor", "take rope from vendor", "insert money into vendor", "close vendor"], this means you are interacting with the vendor and should generate a dialog based on the action.
+        It is important that you treat it like a conversation, not just a series of actions.
+        Example: "Hello, I'm looking to purchase the rope that you have for sale. Here's the payment I have for you."
+
+        
+        Use the memory to generate the dialog. 
+        - if the memory shows 'No memory needed', you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
+        - if the memory shows 'No memory found', its means the thing that user asked is not in memory. So, if conversation history also not contain, you should give negative response. like "I don't think we haven talked about that".
+        - NOTE: YOU MUST NOT provide the information that NOT in the memory if its indicate no memory found, you should give negative response if you don't know.
+        </instructions>
+
+        <response requirements>
+        - Your response should be a dialog based on the history conversation and the user's input and the memory.
+        - The dialog should be in the same language as the user's input.
+        - The dialog should be in the same style as the history conversation.
+        - The dialog should be in the same tone as the history conversation.
+        - The dialog should be in the same format as the history conversation.
+        - The dialog should be as short as possible.
+        - The output should be a single string sentence.
+        </response requirements>
+        """
+        message = [{"role": "system", "content": prompt}]
+        if self.dialog_history.get("villager"):
+            for item in self.dialog_history["villager"][-3:]:  # Keep last 3 exchanges
+                message.extend([
+                    {"role": "user", "content": item["user"]},
+                    {"role": "assistant", "content": item["assistant"]}
+                ])
+        
+        message.append({"role": "user", "content": f"Player inquiry: [{dialog_query}]"})
+        
+        response = self.main_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "system", "content": prompt},
+                    {"role": "user", "content": dialog_query}],
+            temperature=0.3
+            )
+            
+        logger.info(response.choices[0].message.content)
+        self.dialog_history["villager"].append({"user": dialog_query, "assistant": response.choices[0].message.content})
+
+        conversation = f"user: {dialog_query}\nassistant: {response.choices[0].message.content}"
+        self.create_memory(conversation)
         self.chat_round += 1
         return response.choices[0].message.content
-
+    
     def example_npc_talk(self, dialog_query, memory_needed, memory_query, npc_name):
         '''
         Example npc talk
@@ -982,10 +1113,11 @@ class LLM_Agent:
         npc_name: the name for the specific NPC
         '''
 
+    
         memory = "No memory needed"
         if memory_needed:
             memory = self.get_memory(dialog_query, memory_query=memory_query)
-        
+        response_llm_to_npc = self.get_Alex_npc(dialog_query,memory)
         npc_prompt = self.get_npc_prompt(npc_name, memory)
 
         message = [
@@ -996,7 +1128,10 @@ class LLM_Agent:
             for i in range(len(self.dialog_history[npc_name])):
                 message.append({"role": "user", "content": self.dialog_history[npc_name][i]["user"]})
                 message.append({"role": "assistant", "content": self.dialog_history[npc_name][i]["assistant"]})
-        message.append({"role": "user", "content": f"Here is the user's input: {message}"})
+        
+        #message.append({"role": "user", "content": f"Here is the user's input: {message}"})
+        message.append({"role": "user", "content": f"Here is the user's input: {response_llm_to_npc}"})
+        #message.append({"role": "Alex", "content": f"{response_llm_to_npc}"})
 
         response = self.action_client.chat.completions.create(
             model="gpt-4o-2024-11-20",
@@ -1005,7 +1140,7 @@ class LLM_Agent:
         )
 
         logger.info("NPC Response: %s", response.choices[0].message.content)
-        return dialog_query, response.choices[0].message.content
+        return response_llm_to_npc, response.choices[0].message.content
 
         # final return should be:
         return "LLM response", "NPC response"
@@ -1060,10 +1195,41 @@ class LLM_Agent:
         }
         if content["status"] == "Action":
             commands = content["content"]
-            action = self.make_action(commands)
-            if action:
+            action, action_success = self.make_action(commands)
+            if action_success:
                 user_input = f"User input: {user_input}, Action status: success"
-                message = self.generate_dialog(user_input, "Action", "No memory needed")
+
+
+                if action['npc'].lower() in ["vendor", "sheriff", "drunker", "villager"]:
+                    npc_name = action['npc'].lower()
+                    talk["npc_name"] = npc_name
+
+
+                    actions_with_npc = str([s for s in action['content'] if npc_name in s])
+                    logger.info("Actions with NPC: %s", actions_with_npc)
+
+                    if len(actions_with_npc) == 0:
+                        message = self.generate_dialog(user_input, "Action", "No memory needed")
+                    else:
+                        # TODO add memory into this, since no memory query is generated for Action types
+
+                        memory = "No memory eneded"
+                        talk["talk_action"] = True
+                        talk["llm_response"], talk["npc_response"] = self.example_npc_talk(dialog_query=actions_with_npc, 
+                                                                                        memory_needed=False,
+                                                                                        memory_query=memory,
+                                                                                        npc_name=npc_name)
+        
+                        message = self.generate_dialog(user_input, "Action", memory)
+
+                        # TODO figure out if we want to concatenate the responses in case there is any important dialog when purchasing something
+
+                        # user_talk_input = f"User input: {actions_with_npc}, Action status: success, NPC name: {talk['npc_name'] if talk['npc_name'] != 'no npc' else ''}, llm response: {talk['llm_response']}, npc response: {talk['npc_response']}"
+                        # message += self.generate_dialog(user_talk_input, "Talk", memory)
+
+                else:
+                    message = self.generate_dialog(user_input, "Action", "No memory needed")
+
             else:
                 user_input = f"User input: {user_input}, Action status: failed"
                 message = self.generate_dialog(user_input, "Action", "No memory needed")
@@ -1093,6 +1259,9 @@ class LLM_Agent:
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
+            # if content["content"]["npc"] == "villager":
+            #     return self.generate_villager_dialog(user_input,"Talk",memory)
+            # return self.generate_dialog(user_input, "Talk", memory)
             user_input = f"User input: {user_input}, dialog status: {talk['talk_action']}, NPC name: {talk['npc_name'] if talk['npc_name'] != 'no npc' else ''}, llm response: {talk['llm_response']}, npc response: {talk['npc_response']}"
             message = self.generate_dialog(user_input, "Talk", memory)
         elif content["status"] == "Chat":
@@ -1110,13 +1279,141 @@ class LLM_Agent:
         # TODO Add more NPCS
 
         npc_prompts = {}
+        villager_prompt = f"""
+         <question>
+        You are a brave villager in the game, your task is to generate dialog about what happened That night. 
+        Maintain character consistency through these layered parameters:
+        </question>
+
+        <story_background>
+        You are a brave villager in a small village. you are brave and if someone wants to talk about what you have heard that night.
+        you could say you listen the  sound that metal into the well that night.
+
+        Key Facts:
+        - Murder: Player was killed last night with a knife
+        </story_backgroud>
+
+
+        <speaking_style>
+        - wants to catch murder and like  to talk with others
+        For example: I am very sorry for the..
+        </speaking_style>
+
+        <game_state>
+        location: you are in the house 
+        </game_state>
+        
+        <response requirements>
+            - Your response should be a dialog based on the history conversation and the user's input and the memory.
+            - The dialog should be in the same language as the user's input.
+            - The dialog should be in the same style as the history conversation.
+            - The dialog should be in the same tone as the history conversation.
+            - The dialog should be in the same format as the history conversation.
+            - The dialog should be as short as possible.
+            - The output should be a single string sentence.
+        </response requirements>
+        """
+
+        vendor_prompt = f"""
+        <character>
+        You are a vendor in a small village. You run a shop where you sell wine, rope, and other goods. 
+        </character>
+
+        <scenario>
+        You are currently in your shop. Villagers may come to talk to you or buy things. Some of them may mention the murder that happened last night. 
+        you should say " That's awful, I slept early that night, I don't know anything, what would you like to buy"
+        </scenario>
+
+        <dialogue_rules>
+        customer is Alex
+        1. If the customer wants to buy something:
+        - Respond kindly.
+        - If they want wine, recommend it brightly, e.g. "Ah, a fine choice! This bottle is very popular."
+        - If they want rope, act nervous or hesitant, and ask what it's for, but still sell it.
+        - Always end politely, e.g. "Have a nice day!"
+
+        2. If the customer asks about the murder:
+        - Lie and say you were asleep early and didn't hear or see anything.
+        - Express sadness or concern, e.g. "That's awful. I hope they catch the murderer soon."
+
+        3. If the customer combines both (e.g. talks about murder and wants to buy something):
+        - Prioritize responding to the item request first.
+        - Then shift attention with a vague or evasive comment about the murder.
+        - e.g"I slept early that night, I don't know anything, what would you like to buy?"
+
+
+        5. Keep responses short, natural, and in the same language as the user input.
+        </dialogue_rules>
+
+        <example_dialogues>
+        customer: I'd like to buy some wine, could you recommend a good one?
+        Vendor: Ah, a fine choice! This bottle of red wine is especially popular among locals. Enjoy!
+
+        customer: Can I get a rope?
+        Vendor: Hmm... rope, huh? May I ask what you need it for?
+
+        customer: Did you hear about the murder last night?
+        Vendor: I'm very sorry to hear about that… but I slept early and didn't hear anything. I hope they catch the killer.
+
+        customer: I need to buy some rope… also, do you know anything about what happened?
+        Vendor: I can get you the rope… but I honestly don't know anything. I was asleep early. Stay safe, alright?
+
+        customer: I'd like to buy something.
+        Vendor: Of course! Let me show you what I have today.
+        </example_dialogues>
+
+        <response_format>
+        - Output a single-line response.
+        - Stay in character.
+        - Match tone, language, and style of previous dialogue.
+        - Be polite unless provoked.
+        - never avoiding response to the question.
+        </response_format>
+
+        <response requirements>
+            - Your response should be a dialog based on the history conversation and the user's input and customer message and the memory.
+            - The dialog should be in the same language as the user's input.
+            - The dialog should be in the same style as the history conversation.
+            - The dialog should be in the same tone as the history conversation.
+            - The dialog should be in the same format as the history conversation.
+            - The dialog should be as short as possible.
+            - The output should be a single string sentence.
+        </response requirements>
+        """
+
+        drunker_prompt = f"""
+        <character>
+        You are a drunker in a small village. You are known for your wild stories and drunken antics.
+        You sleep outside, and are always hoping for another villager to give you a drink.
+        While a drunker, you are still kind and ready to repay those who help you.
+        You have a rope in your possession, and you are willing to give it to any villager if they give you a drink.
+        </character>
+
+        <scenario>
+        You are currently laying on the ground, drunk and sleeping.
+        A murder just happened in the village last night.
+        If someone should mention the murder to you, you should be remorseful and pour out a drink for the deceased.
+        </scenario>
+
+        <speaking_style>
+        You are currently drunk, so you will slur your words, and use phrases such as "Ugh" or "Hrmph"
+        </speaking_style>
+
+        <example_dialogue>
+        villager: "Did you hear about the murder last night?"
+        Drunker: "Hmmph. Yes I did... Very sad to hear about itttt... Lemme pour a drink outfer the villger who died. Never knew'im but sad to hear 'bout it."
+        </example_dialogue>
+        """
 
         sherriff_prompt = f"""
-        <personal_info>
+        <character>
         You are a gruff and no-nonsense sheriff in a small, quiet village.  
         You are deeply committed to justice and ensuring the safety of the villagers, but you are naturally suspicious of everyone.  
         Your years of experience have made you cautious and skeptical, and you rarely take things at face value.  
         You are methodical, thorough, and always look for evidence before making decisions.  
+        You have heard that a murder just happened in the town, and you are eager to catch the culprit.
+        Your goal is to obtain the murder weapon, and use it to identify the cul  
+
 
         Important: You are not easily swayed by emotions or personal stories.  
         You prefer facts and proof over hearsay, and you are willing to question anyone, even those you trust.  
@@ -1125,7 +1422,7 @@ class LLM_Agent:
         Your personality is gruff, serious, and slightly intimidating.  
         You speak in short, direct sentences and rarely show emotion.  
         You are not rude, but you are not overly friendly either — you are focused on getting to the truth.
-        </personal_info>
+        </character>
 
         <speaking_style>
         - Your tone should be firm, authoritative, and slightly stern.
@@ -1134,8 +1431,19 @@ class LLM_Agent:
         - You never jump to conclusions without evidence.
         - If you need more information, you will ask for it directly.
         </speaking_style>
+
+         <response requirements>
+            - Your response should be a dialog based on the history conversation and the user's input and the memory.
+            - The dialog should be in the same language as the user's input.
+            - The dialog should be in the same style as the history conversation.
+            - The dialog should be in the same tone as the history conversation.
+            - The dialog should be in the same format as the history conversation.
+            - The dialog should be as short as possible.
+            - The output should be a single string sentence.
+        </response requirements>
         """
 
+        
         general_prompt = f"""
         <game state>
         Location: {self.get_current_location()}
@@ -1162,9 +1470,10 @@ class LLM_Agent:
         - The response should be in your own personal speaking tone.
         </response requirements>
         """
-        
-
+        npc_prompts["vendor"] = vendor_prompt
+        npc_prompts["villager"] = villager_prompt
         npc_prompts["sheriff"] = sherriff_prompt + general_prompt
+        npc_prompts["drunker"] = drunker_prompt + general_prompt
 
         return npc_prompts[npc_name.lower()]
 
