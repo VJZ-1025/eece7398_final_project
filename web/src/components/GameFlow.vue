@@ -37,8 +37,8 @@ export default {
     nextScreen() {
       if (this.currentScreen === 'start') {
         this.currentScreen = 'story'
-      } else if (this.currentScreen === 'story') {
         this.store.resetGame()
+      } else if (this.currentScreen === 'story') {
         this.store.setCurrentWindow('ChatWindow')
       }
     }

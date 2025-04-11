@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 class ElasticsearchMemory:
     def __init__(self, es: Elasticsearch):
         self.es = es
-        logger.info(f"Connected to Elasticsearch cluster: {es.info()}")
         self.index_name = "memory"
         self.mapping = {
             "mappings": {
@@ -66,10 +65,8 @@ class ElasticsearchMemory:
     def _initialize_index(self):
         if self.es.indices.exists(index=self.index_name):
             self.es.indices.delete(index=self.index_name)
-            logger.info(f"Existing index '{self.index_name}' deleted.")
         
         self.es.indices.create(index=self.index_name, body=self.mapping)
-        logger.info(f"Index '{self.index_name}' created.")
 
     def create_embedding(self, text):
         return self.model.encode(text, show_progress_bar=False)
@@ -139,7 +136,6 @@ class LLM_Agent:
         """
         Main LLM for user communication
         """
-        logger.info("Initial process...")
         prompt = f"""
         <Background>
         You are the main dialogue LLM communicating with the player. You need act as a villager who is assisting the player.
@@ -231,18 +227,12 @@ class LLM_Agent:
             max_tokens=300,
             temperature=0.3,
         )
-        logger.info('debug: initial_process 183')
-        logger.info(response.choices[0].message.content)
         list_actions = json.loads(clean_json_prefix(response.choices[0].message.content))["CoT"]
-        logger.info(list_actions)
         inner_thinking = list_actions[:(len(list_actions) - 1)]
-        pprint(list_actions)
         content = list_actions[len(list_actions) - 1]
         return content
     
     def make_action(self, plain_text_explanation):
-        logger.info("Action thinking...")
-        
         prompt_template = f"""
             <question>
             A player is navigating a TextWorld Microsoft research game and needs to execute a step-by-step sequence of commands to reach the desired destination or complete a task. The map is 3x3 grid layout, each command only has one action, which means a action can only move the player one grid per time.
@@ -377,24 +367,18 @@ class LLM_Agent:
             messages=[{"role": "system", "content": prompt_template},
                     {"role": "user", "content": f"Here is the command explanation: {plain_text_explanation}"}],
         )
-        logger.info(response.choices[0].message.content)
         jsonfy_response = json.loads(response.choices[0].message.content)
         status = jsonfy_response["CoT"][len(jsonfy_response["CoT"]) - 1]["status"]
         if status == "rejected":
-            logger.info("enh enh, you can't do that")
             self.obs, self.reward, self.done, self.infos = self.env.step("")
             return False
         list_of_commands = jsonfy_response["CoT"][len(jsonfy_response["CoT"]) - 1]["content"]
         if list_of_commands == ["reject command"]:
-            logger.info("nah nah, you can't do that")
             self.obs, self.reward, self.done, self.infos = self.env.step("")
             return False
         for command in list_of_commands:
-            # print(f"\nExecuting command: {command}")
             self.obs, self.reward, self.done, self.infos = self.env.step(command)
-            logger.info(self.obs)
             if self.done:
-                logger.info("Game Over!")
                 return True
         return jsonfy_response["CoT"][-1], True
 
@@ -433,10 +417,10 @@ class LLM_Agent:
         </elasticsearch_index_structure>
 
         <structure_explanation>
-        - "character": Indicates which character the memory is related to. This can be the player or a non-player character (NPC), or even an ambiguous entity (such as "yourself" or "unknown"). It is used to filter memories from the perspective of the involved character.
+        - "character": Indicates which character the memory is related to. This can be the player or a non-player character (NPC), or even an ambiguous entity (such as "alex" or "unknown"). It is used to filter memories from the perspective of the involved character.
         - Type: keyword
         - Source: Derived from the dialogue context, usually the subject or object of the action.
-        - Possible values: "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+        - Possible values: "player", "vendor", "sheriff", "drunker", "villager", "alex", "unknown"
         - Example: If the dialogue is "You gave the sword to the guard", then character = "sheriff"
         - Example: If you are inside house 2, the character could be the "Villager"
 
@@ -505,7 +489,7 @@ class LLM_Agent:
                         "query": {{
                             "character": {{
                                 need_get: true|false,
-                                character_name: "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+                                character_name: "player", "vendor", "sheriff", "drunker", "villager", "alex", "unknown"
                             }},
                             "memory_type": {{
                                 need_get: true|false,
@@ -542,14 +526,11 @@ class LLM_Agent:
             )
             content = clean_json_prefix(response.choices[0].message.content)
             response_json = json.loads(content)
-            logger.info("LLM returned query reasoning: %s", response_json)
-            pprint(response_json)
             instruction = response_json["CoT"][-1]["content"]
 
             # get the word to embed
             embedding_word = instruction.get("word_need_embed")
             if not embedding_word:
-                logger.warning("No word to embed returned from LLM.")
                 return "No memory found"
 
             embedding_vector = self.elasticsearch_memory.create_embedding(embedding_word)
@@ -583,7 +564,7 @@ class LLM_Agent:
                             "bool": {
                                 "must": must_conditions,
                                 "should": should_conditions,
-                                "minimum_should_match": 0  # keyword 匹配不是强制，但提升分数
+                                "minimum_should_match": 0  
                             }
                         },
                         "script": {
@@ -599,11 +580,7 @@ class LLM_Agent:
             }
 
             # execute the query
-            logger.info('debug: query_template 541')
-            logger.info(query_template)
             search_result = self.elasticsearch_memory.search(query_template)
-            logger.info('debug: search_result 541')
-            logger.info(search_result)
             hits = search_result.get("hits", {}).get("hits", [])
             if hits:
                 return hits[0]["_source"]["summary"]  # return multiple summary
@@ -647,10 +624,10 @@ class LLM_Agent:
         </elasticsearch_index_structure>
 
         <structure_explanation>
-        - "character": Indicates which character the memory is related to. This can be the player or a non-player character (NPC), or even an ambiguous entity (such as "yourself" or "unknown"). It is used to filter memories from the perspective of the involved character.
+        - "character": Indicates which character the memory is related to. This can be the player or a non-player character (NPC), or even an ambiguous entity (such as "alex" or "unknown"). It is used to filter memories from the perspective of the involved character. NOTE: If the memeory is related to yourself, your name is Alex, so the character should be "alex".
         - Type: keyword
         - Source: Derived from the dialogue context, usually the subject or object of the action.
-        - Possible values: "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+        - Possible values: "player", "vendor", "sheriff", "drunker", "villager", "alex", "unknown"
         - Example: If the dialogue is "You gave the sword to the guard", then character = "sheriff"
 
         - "memory_type": Specifies the category of the memory, used for organizing and filtering different types of memory.
@@ -716,7 +693,7 @@ class LLM_Agent:
                     {{"action": "Verifiy Thinking", "title": "verify the query", "content": "..."}},
                     {{"action": "Instruction Summarization", "content": {{
                         "insert_memory": {{
-                                "character": "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+                                "character": "player", "vendor", "sheriff", "drunker", "villager", "alex", "unknown"
                                 "memory_type": "event", "thought", "observation", "dialogue", "perception", "fact", "goal", "preference", "unknown"
                                 "summary": string
                                 "raw_input": string
@@ -727,14 +704,14 @@ class LLM_Agent:
                 ]
             }}
             insert_memory: the memory to insert into the memory, it should be a dictionary (NOT a list) with the following keys:
-                - character: the character related to the memory, it can be "player", "vendor", "sheriff", "drunker", "villager", "yourself", "unknown"
+                - character: the character related to the memory, it can be "player", "vendor", "sheriff", "drunker", "villager", "alex", "unknown"
                 - memory_type: the type of the memory, it can be "event", "thought", "observation", "dialogue", "perception", "fact", "goal", "preference", "unknown"
                 - summary: the summary of the memory
                 - raw_input: the original input from the player or the full dialogue that occurred
                 - keywords: the keywords of the memory
         </response requirements>    
         """
-
+        logger.info(f"create memory by conversation: {conversation}")
         response = self.action_client.chat.completions.create(
             model="gpt-4o-2024-11-20",
             temperature=0.7,
@@ -742,10 +719,9 @@ class LLM_Agent:
                     {"role": "user", "content": conversation}]
         )
         content = clean_json_prefix(response.choices[0].message.content)
-        logger.info(content)
         response_json = json.loads(content)
-        pprint(response_json)
         instruction = response_json["CoT"][-1]["content"]
+        logger.info(f"get the elasticsearch insert memory from create memory by conversation: {instruction}")
         insert_memory = instruction.get("insert_memory")
         if not insert_memory:
             return "No memory created"
@@ -785,8 +761,10 @@ class LLM_Agent:
                     "size": 1
                 }
             )
+            logger.info(f"check if there is similar memory, similar_memories: {similar_memories}")
             hits = similar_memories["hits"]["hits"]
             if hits:
+                logger.info(f"we get the old memory, old_memory: {hits[0]['_source']['summary']}, then we need to merge the old memory and new memory")
                 old_memory = hits[0]["_source"]["summary"]
                 new_memory = mem["summary"]
 
@@ -840,6 +818,7 @@ class LLM_Agent:
                     if delete_memory:
                         index_id = hits[0]["_id"]
                         self.elasticsearch_memory.delete(index_id)
+                logger.info(f"we get the new memory, new_memory: {summary}")
             else:
                 summary = mem["summary"]
 
@@ -861,7 +840,6 @@ class LLM_Agent:
         '''
         Generate the dialog as a villager based on the user's input
         '''
-        logger.info(f"Generating dialog with memory: {self.obs}")
         prompt = f"""
         <question>
         You are the main character in the game, you task is to generate a dialog based on the history conversation and the user's input and the memory.
@@ -872,7 +850,7 @@ class LLM_Agent:
         </question>
 
         <story_background>
-        You are a brave and sence of justice villager in a small village. The user is player who in this game setting is died ghost, and you are the only one who can see and talk to him.
+        You are a brave and sence of justice villager in a small village. Your name is Alex. The user is player who in this game setting is died ghost, and you are the only one who can see and talk to him.
         Becuase the user is a ghost, he can interact with the world, so you can assume he is blind, you need describe the environment.
         The user is trying to find the murderer of they You need to help the user to find the murderer. 
         The user was killed by last night, the tool is a knife, and the murderer is the vendor.
@@ -978,8 +956,6 @@ class LLM_Agent:
             temperature=0.7,
             messages=message
         )
-        logger.info('debug: generate_dialog 812')
-        logger.info(response.choices[0].message.content)
         self.dialog_history["main_character"].append({"user": user_input, "assistant": response.choices[0].message.content})
 
         conversation = f"user: {user_input}\nassistant: {response.choices[0].message.content}"
@@ -1096,7 +1072,6 @@ class LLM_Agent:
             temperature=0.3
             )
             
-        logger.info(response.choices[0].message.content)
         self.dialog_history["villager"].append({"user": dialog_query, "assistant": response.choices[0].message.content})
 
         conversation = f"user: {dialog_query}\nassistant: {response.choices[0].message.content}"
@@ -1139,11 +1114,8 @@ class LLM_Agent:
             messages=message
         )
 
-        logger.info("NPC Response: %s", response.choices[0].message.content)
         return response_llm_to_npc, response.choices[0].message.content
 
-        # final return should be:
-        return "LLM response", "NPC response"
             
     def check_items_in_container(self, container):
         '''
@@ -1175,7 +1147,6 @@ class LLM_Agent:
         knife = self.check_items_in_container('Sheriff')
         if "knife" in knife:
             rope = self.check_items_in_container('Vendor')
-            logger.info(f"debug: rope {rope}, {type(rope)}")
             if "rope" in rope:
                 return "good_end"
             else:
@@ -1186,7 +1157,9 @@ class LLM_Agent:
         '''
         Main process of the agent
         '''
+        logger.info(f"First, classify the action by user input from first process, user input: {user_input}")
         content = self.initial_process(user_input)
+        logger.info(f"we get the content from initial process, content: {content}")
         talk = {
             "talk_action": False,
             "npc_name": "",
@@ -1195,10 +1168,11 @@ class LLM_Agent:
         }
         if content["status"] == "Action":
             commands = content["content"]
+            logger.info(f"we get the commands from initial process, commands: {commands}")
             action, action_success = self.make_action(commands)
             if action_success:
                 user_input = f"User input: {user_input}, Action status: success"
-
+                logger.info(f"we get the action from make_action, action: {action}")
 
                 if action['npc'].lower() in ["vendor", "sheriff", "drunker", "villager"]:
                     npc_name = action['npc'].lower()
@@ -1206,7 +1180,6 @@ class LLM_Agent:
 
 
                     actions_with_npc = str([s for s in action['content'] if npc_name in s])
-                    logger.info("Actions with NPC: %s", actions_with_npc)
 
                     if len(actions_with_npc) == 0:
                         message = self.generate_dialog(user_input, "Action", "No memory needed")
@@ -1228,18 +1201,21 @@ class LLM_Agent:
                         # message += self.generate_dialog(user_talk_input, "Talk", memory)
 
                 else:
+                    logger.info("Finally, generate the dialog for the action")
                     message = self.generate_dialog(user_input, "Action", "No memory needed")
 
             else:
                 user_input = f"User input: {user_input}, Action status: failed"
                 message = self.generate_dialog(user_input, "Action", "No memory needed")
         elif content["status"] == "Query":
+            logger.info("we get the query from initial process, content: {content}")
             memory_needed = content["content"]["memory"]
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
             message = self.generate_dialog(user_input, "Query", memory)
         elif content["status"] == "Talk":
+            logger.info("we get the talk from initial process, content: {content}")
             memory_needed = content["content"]["memory"]
             memory_query = content["content"]["memory_query"]
             talk["npc_name"] = content["content"]["npc"]

@@ -14,6 +14,7 @@ export const useDataStore = defineStore('DataStore', {
       this.currentWindow = window
     },
     resetGame() {
+      this.currentLocation = 'Home'
       axios.post('http://localhost:8000/reset')
     }
   }
