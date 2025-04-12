@@ -637,8 +637,17 @@ get the memory from elasticsearch, search_result: {search_result}
 ------------------------------------------------------
 """)
             hits = search_result.get("hits", {}).get("hits", [])
+            logger.info(f"""
+++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+DEBUG: hits: {hits}
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++
+""")
             if hits:
-                return hits[0]["_source"]["summary"]  # return multiple summary
+                # Combine summaries from all hits into a single string
+                combined_summary = " ".join([hit["_source"]["summary"] for hit in hits])
+                return combined_summary  # return multiple summary
             else:
                 return "No memory found"
 
@@ -1029,7 +1038,7 @@ insert the memory to elasticsearch, data: {data}
         Use the memory to generate the dialog. 
         - if the memory shows 'No memory needed', you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
         - if the memory shows 'No memory found', its means the thing that user asked is not in memory. So, if conversation history also not contain, you should give negative response. like "I don't think we haven talked about that".
-        - the information priority is game state > memory > history conversation, this means, if the memory said you have money, but the game state said you are carrying nothing, you should give the base on the game state.
+        - the information priority is memory > game state > history conversation, but the inventory status is based on game state, this means, if the memory said you have money, but the game state said you are carrying nothing, you should give the base on the game state.
         - NOTE: YOU MUST NOT provide the information that NOT in the memory if its indicate no memory found, you should give negative response if you don't know.
 
         special case:
@@ -1145,7 +1154,7 @@ insert the memory to elasticsearch, data: {data}
         
         Use the memory to generate the dialog. 
         - if the memory shows 'No memory needed', you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
-        - if the memory shows 'No memory found', its means the thing that user asked is not in memory. So, if conversation history also not contain, you should give negative response. like "I don't think we haven talked about that".
+        - if the memory shows 'No memory found', its means the thing that user asked is not in memory. So, if conversation history also not contain, based on the user input, you may act as interest in the user's input like "interesting, I haven't heard that before", or act as nagative response like you don't know.
         - NOTE: YOU MUST NOT provide the information that NOT in the memory if its indicate no memory found, you should give negative response if you don't know.
         </instructions>
 
