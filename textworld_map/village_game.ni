@@ -29,7 +29,7 @@ The r_2 is mapped east of r_1.
 Understand "Shop" as r_0.
 The internal name of r_0 is "Shop".
 The printed name of r_0 is "-= Shop =-".
-The Shop part 0 is some text that varies. The Shop part 0 is "A store with various goods on display.".
+The Shop part 0 is some text that varies. The Shop part 0 is "A store, vendor is here, he is selling wine and rope.".
 The description of r_0 is "[Shop part 0]".
 
 The r_3 is mapped south of r_0.
@@ -73,7 +73,7 @@ The r_2 is mapped north of r_5.
 Understand "House" as r_7.
 The internal name of r_7 is "House".
 The printed name of r_7 is "-= House =-".
-The House part 0 is some text that varies. The House part 0 is "Another resident's home.".
+The House part 0 is some text that varies. The House part 0 is "Another resident's home, helpful villager live here.".
 The description of r_7 is "[House part 0]".
 
 The r_6 is mapped west of r_7.
@@ -82,7 +82,7 @@ The r_8 is mapped east of r_7.
 Understand "Home" as r_6.
 The internal name of r_6 is "Home".
 The printed name of r_6 is "-= Home =-".
-The Home part 0 is some text that varies. The Home part 0 is "Cozy home, but player died here, has blood on the floor,money on the table.".
+The Home part 0 is some text that varies. The Home part 0 is "Cozy home, but player died here, has blood on the floor.".
 The description of r_6 is "[Home part 0]".
 
 The r_3 is mapped north of r_6.
@@ -90,7 +90,7 @@ The r_7 is mapped east of r_6.
 Understand "Forest" as r_8.
 The internal name of r_8 is "Forest".
 The printed name of r_8 is "-= Forest =-".
-The Forest part 0 is some text that varies. The Forest part 0 is "A forest a drunker is lying on the ground.".
+The Forest part 0 is some text that varies. The Forest part 0 is "A forest, a drunker is lying on the ground.".
 The description of r_8 is "[Forest part 0]".
 
 The r_7 is mapped west of r_8.

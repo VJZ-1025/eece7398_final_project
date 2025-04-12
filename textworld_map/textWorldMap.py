@@ -16,7 +16,7 @@ def generate_village_map(output_file="./village_game.z8"):
 
     # --- 1. Create 9 rooms (3×3 square layout) ---
     # Top row (Row1)
-    r11 = gm.new_room(name="Shop", desc="A store with various goods on display.") 
+    r11 = gm.new_room(name="Shop", desc="A store, vendor is here, he is selling wine and rope.") 
     r12 = gm.new_room(name="Village Committee", desc="A place where villagers gather to discuss community affairs.")
     r13 = gm.new_room(name="Hospital", desc="Provides medical services to villagers.")
 
@@ -26,9 +26,9 @@ def generate_village_map(output_file="./village_game.z8"):
     r23 = gm.new_room(name="Sheriff Office", desc="Responsible for maintaining village security, sheriff is here.")
 
     # Bottom row (Row3)
-    r31 = gm.new_room(name="Home", desc="Cozy home, but player died here, has blood on the floor,money on the table.")
-    r32 = gm.new_room(name="House", desc="Another resident's home.")
-    r33 = gm.new_room(name="Forest", desc="A forest a drunker is lying on the ground.")
+    r31 = gm.new_room(name="Home", desc="Cozy home, but player died here, has blood on the floor.")
+    r32 = gm.new_room(name="House", desc="Another resident's home, helpful villager live here.")
+    r33 = gm.new_room(name="Forest", desc="A forest, a drunker is lying on the ground.")
 
     # --- 2. Establish connections between rooms ---
     # Horizontal connections (East-West)

@@ -130,6 +130,25 @@ class LLM_Agent:
             "sheriff": []
         }
         self.elasticsearch_memory._initialize_index()
+        logger.info('''
+------------------------------------------------------
+
+
+
+
+
+
+
+                    reset game
+
+
+
+
+
+
+
+------------------------------------------------------
+                    ''')
 
     
     def initial_process(self, user_input):
@@ -229,6 +248,12 @@ class LLM_Agent:
         )
         list_actions = json.loads(clean_json_prefix(response.choices[0].message.content))["CoT"]
         inner_thinking = list_actions[:(len(list_actions) - 1)]
+        logger.info(f"""
+------------------------------------------------------
+Initial inner thinking: 
+{json.dumps(inner_thinking, indent=4)}
+------------------------------------------------------
+""")
         content = list_actions[len(list_actions) - 1]
         return content
     
@@ -380,6 +405,14 @@ class LLM_Agent:
             self.obs, self.reward, self.done, self.infos = self.env.step(command)
             if self.done:
                 return True
+        inner_thinking = jsonfy_response["CoT"][:-1]
+        logger.info(f"""
+------------------------------------------------------
+Action inner thinking: 
+{json.dumps(inner_thinking, indent=4)}
+------------------------------------------------------
+""")
+
         return jsonfy_response["CoT"][-1], True
 
 
@@ -526,6 +559,14 @@ class LLM_Agent:
             )
             content = clean_json_prefix(response.choices[0].message.content)
             response_json = json.loads(content)
+            inner_thinking = response_json["CoT"][:-1]
+            logger.info(f"""
+------------------------------------------------------
+Get memory inner thinking: 
+{json.dumps(inner_thinking, indent=4)}
+------------------------------------------------------
+""")
+
             instruction = response_json["CoT"][-1]["content"]
 
             # get the word to embed
@@ -580,7 +621,21 @@ class LLM_Agent:
             }
 
             # execute the query
+            logger.info(f"""
+------------------------------------------------------
+                    
+execute the query, query_template: {json.dumps(query_template, indent=4)}
+
+------------------------------------------------------
+""")
             search_result = self.elasticsearch_memory.search(query_template)
+            logger.info(f"""
+------------------------------------------------------
+                    
+get the memory from elasticsearch, search_result: {json.dumps(search_result, indent=4)}
+
+------------------------------------------------------
+""")
             hits = search_result.get("hits", {}).get("hits", [])
             if hits:
                 return hits[0]["_source"]["summary"]  # return multiple summary
@@ -711,7 +766,13 @@ class LLM_Agent:
                 - keywords: the keywords of the memory
         </response requirements>    
         """
-        logger.info(f"create memory by conversation: {conversation}")
+        logger.info(f"""
+------------------------------------------------------
+                    
+create memory by conversation: {conversation}
+
+------------------------------------------------------
+""")
         response = self.action_client.chat.completions.create(
             model="gpt-4o-2024-11-20",
             temperature=0.7,
@@ -720,8 +781,21 @@ class LLM_Agent:
         )
         content = clean_json_prefix(response.choices[0].message.content)
         response_json = json.loads(content)
+        inner_thinking = response_json["CoT"][:-1]
+        logger.info(f"""
+------------------------------------------------------
+Create memory inner thinking: 
+{json.dumps(inner_thinking, indent=4)}
+------------------------------------------------------
+""")
         instruction = response_json["CoT"][-1]["content"]
-        logger.info(f"get the elasticsearch insert memory from create memory by conversation: {instruction}")
+        logger.info(f"""
+------------------------------------------------------
+                    
+get the elasticsearch insert memory from create memory by conversation: {instruction}
+
+------------------------------------------------------
+""")
         insert_memory = instruction.get("insert_memory")
         if not insert_memory:
             return "No memory created"
@@ -761,10 +835,22 @@ class LLM_Agent:
                     "size": 1
                 }
             )
-            logger.info(f"check if there is similar memory, similar_memories: {similar_memories}")
+            logger.info(f"""
+------------------------------------------------------
+                    
+check if there is similar memory, similar_memories: {similar_memories}
+
+------------------------------------------------------
+""")
             hits = similar_memories["hits"]["hits"]
             if hits:
-                logger.info(f"we get the old memory, old_memory: {hits[0]['_source']['summary']}, then we need to merge the old memory and new memory")
+                logger.info(f"""
+------------------------------------------------------
+                    
+we get the old memory, old_memory: {hits[0]['_source']['summary']}, then we need to merge the old memory and new memory
+
+------------------------------------------------------
+""")
                 old_memory = hits[0]["_source"]["summary"]
                 new_memory = mem["summary"]
 
@@ -818,7 +904,13 @@ class LLM_Agent:
                     if delete_memory:
                         index_id = hits[0]["_id"]
                         self.elasticsearch_memory.delete(index_id)
-                logger.info(f"we get the new memory, new_memory: {summary}")
+                logger.info(f"""
+------------------------------------------------------
+                    
+we get the new memory, new_memory: {summary}
+
+------------------------------------------------------
+""")
             else:
                 summary = mem["summary"]
 
@@ -831,6 +923,13 @@ class LLM_Agent:
                 "embedding": embedding,
                 "timestamp": datetime.utcnow().isoformat() + "Z"
             }
+            logger.info(f"""
+------------------------------------------------------
+                    
+insert the memory to elasticsearch, data: {data}
+
+------------------------------------------------------
+""")
             self.elasticsearch_memory.insert(data)
 
         return "Memory created"
@@ -920,7 +1019,7 @@ class LLM_Agent:
             - and finally, the current user message.
         Here is the provided action type: {action_type}
         If the action type is "Query", you should generate the dialog based on the memory, history conversation and the user's input.
-        If the action type is "Action", you should generate the dialog based on the action status and the user's input, action status will provide with user's input.
+        If the action type is "Action", you should generate the dialog based on the action status and the user's input, action status will provide with user's input, you also need to check the game state to see if the action said is successful, but the game state shows nagative result, you should give the negative response.
         If the action type is "Talk", you should generate the dialog based on the history conversation and the user's input, the user input will contain the dialog status, NPC name, llm response and npc response.
         If the action type is "Chat", you should generate the dialog based on the history conversation and the user's input.
         If the action type is "Other", you should give negative response, and remind user keep in finding the murderer, don't say anything else.
@@ -930,7 +1029,11 @@ class LLM_Agent:
         Use the memory to generate the dialog. 
         - if the memory shows 'No memory needed', you should generate the dialog based on the the game state I provided and the history conversation and the user's input.
         - if the memory shows 'No memory found', its means the thing that user asked is not in memory. So, if conversation history also not contain, you should give negative response. like "I don't think we haven talked about that".
+        - the information priority is game state > memory > history conversation, this means, if the memory said you have money, but the game state said you are carrying nothing, you should give the base on the game state.
         - NOTE: YOU MUST NOT provide the information that NOT in the memory if its indicate no memory found, you should give negative response if you don't know.
+
+        special case:
+        - If the action is for down to the well, you are also taking the knife from the well, so you shoulde generate the dialog something like 'I down to the well, and I see the knife, the knife has blood on it, I think it's the murderer's knife, I take it'. you should optmized the dialog for this meaning. Main purpose is you need tell the player you take the knife.
         </instructions>
 
         <response requirements>
@@ -940,7 +1043,7 @@ class LLM_Agent:
         - The dialog should be in the same tone as the history conversation.
         - The dialog should be in the same format as the history conversation.
         - The dialog should be as short as possible.
-        - The output should be a single string sentence.
+        - The output should be a simple string sentence talk like a normal person not too long or to short, only sentence, don't include the name to indicate the speaker, for example, "I want to buy a rope" is correct, "Alex: I want to buy a rope" is incorrect.
         </response requirements>
         """
         message = [
@@ -959,7 +1062,8 @@ class LLM_Agent:
         self.dialog_history["main_character"].append({"user": user_input, "assistant": response.choices[0].message.content})
 
         conversation = f"user: {user_input}\nassistant: {response.choices[0].message.content}"
-        self.create_memory(conversation)
+        if action_type != "Action":
+            self.create_memory(conversation)
         return response.choices[0].message.content
     
     def get_Alex_npc(self, dialog_query, memory_query):
@@ -1052,7 +1156,7 @@ class LLM_Agent:
         - The dialog should be in the same tone as the history conversation.
         - The dialog should be in the same format as the history conversation.
         - The dialog should be as short as possible.
-        - The output should be a single string sentence.
+        - The output should be a single string sentence, only sentence, don't include the name to indicate the speaker, for example, "I want to buy a rope" is correct, "Alex: I want to buy a rope" is incorrect.
         </response requirements>
         """
         message = [{"role": "system", "content": prompt}]
@@ -1157,9 +1261,21 @@ class LLM_Agent:
         '''
         Main process of the agent
         '''
-        logger.info(f"First, classify the action by user input from first process, user input: {user_input}")
+        logger.info(f"""
+------------------------------------------------------
+                    
+First, classify the action by user input from first process, user input: {user_input}
+
+------------------------------------------------------
+""")
         content = self.initial_process(user_input)
-        logger.info(f"we get the content from initial process, content: {content}")
+        logger.info(f"""
+------------------------------------------------------
+                    
+we get the content from initial process, content: {content}
+
+------------------------------------------------------
+""")
         talk = {
             "talk_action": False,
             "npc_name": "",
@@ -1168,11 +1284,23 @@ class LLM_Agent:
         }
         if content["status"] == "Action":
             commands = content["content"]
-            logger.info(f"we get the commands from initial process, commands: {commands}")
+            logger.info(f"""
+------------------------------------------------------
+                        
+we get the commands from initial process, commands: {commands}
+
+------------------------------------------------------
+""")
             action, action_success = self.make_action(commands)
             if action_success:
                 user_input = f"User input: {user_input}, Action status: success"
-                logger.info(f"we get the action from make_action, action: {action}")
+                logger.info(f"""
+------------------------------------------------------
+                        
+we get the action from make_action, action: {action}
+
+------------------------------------------------------
+""")
 
                 if action['npc'].lower() in ["vendor", "sheriff", "drunker", "villager"]:
                     npc_name = action['npc'].lower()
@@ -1201,21 +1329,39 @@ class LLM_Agent:
                         # message += self.generate_dialog(user_talk_input, "Talk", memory)
 
                 else:
-                    logger.info("Finally, generate the dialog for the action")
+                    logger.info(f"""
+------------------------------------------------------
+                    
+Finally, generate the dialog for the action
+
+------------------------------------------------------
+""")
                     message = self.generate_dialog(user_input, "Action", "No memory needed")
 
             else:
                 user_input = f"User input: {user_input}, Action status: failed"
                 message = self.generate_dialog(user_input, "Action", "No memory needed")
         elif content["status"] == "Query":
-            logger.info("we get the query from initial process, content: {content}")
+            logger.info(f"""
+------------------------------------------------------
+                    
+we get the query from initial process, content: {content}
+
+------------------------------------------------------
+""")
             memory_needed = content["content"]["memory"]
             memory = "No memory needed"
             if memory_needed:
                 memory = self.get_memory(user_input, content["content"]["memory_query"])
             message = self.generate_dialog(user_input, "Query", memory)
         elif content["status"] == "Talk":
-            logger.info("we get the talk from initial process, content: {content}")
+            logger.info(f"""
+------------------------------------------------------
+                    
+we get the talk from initial process, content: {content}
+
+------------------------------------------------------
+""")
             memory_needed = content["content"]["memory"]
             memory_query = content["content"]["memory_query"]
             talk["npc_name"] = content["content"]["npc"]
