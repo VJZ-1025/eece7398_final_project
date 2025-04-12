@@ -632,7 +632,7 @@ execute the query, query_template: {json.dumps(query_template, indent=4)}
             logger.info(f"""
 ------------------------------------------------------
                     
-get the memory from elasticsearch, search_result: {json.dumps(search_result, indent=4)}
+get the memory from elasticsearch, search_result: {search_result}
 
 ------------------------------------------------------
 """)
